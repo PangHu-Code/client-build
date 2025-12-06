@@ -1,0 +1,262 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '私有仓库分支名 (如 client-git-x)'
+        required: true
+        default: 'main'
+      platform:
+        description: '选择构建平台'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - macos
+          - windows
+          - android
+
+jobs:
+  build-macos:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
+    runs-on: macos-14
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: PangHu-Code/client
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ github.event.inputs.branch }}
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Read brand config
+        id: brand
+        run: |
+          APP_NAME=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['app']['displayName'])")
+          VERSION=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['build']['version'])")
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Core (macOS arm64)
+        run: |
+          cd core
+          mkdir -p ../libclash/macos
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/macos/FlClashCore
+
+      - name: Apply brand config
+        run: dart scripts/apply_brand.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release --dart-define=APP_ENV=stable
+
+      - name: Create ZIP
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -r "${{ steps.brand.outputs.app_name }}-macos.zip" "${{ steps.brand.outputs.app_name }}.app"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: build/macos/Build/Products/Release/${{ steps.brand.outputs.app_name }}-macos.zip
+
+  build-windows:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: PangHu-Code/client
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ github.event.inputs.branch }}
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Read brand config
+        id: brand
+        shell: bash
+        run: |
+          APP_NAME=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['app']['displayName'])")
+          VERSION=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['build']['version'])")
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Core (Windows amd64)
+        shell: bash
+        run: |
+          cd core
+          mkdir -p ../libclash/windows
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/windows/FlClashCore.exe
+
+      - name: Build Helper Service
+        shell: bash
+        run: |
+          CORE_SHA256=$(sha256sum libclash/windows/FlClashCore.exe | cut -d ' ' -f1)
+          echo "Core SHA256: $CORE_SHA256"
+          cd services/helper
+          TOKEN=$CORE_SHA256 cargo build --release --features windows-service
+          cp target/release/helper.exe ../../libclash/windows/FlClashHelperService.exe
+
+      - name: Apply brand config
+        run: dart scripts/apply_brand.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release --dart-define=APP_ENV=stable
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "${{ steps.brand.outputs.app_name }}-windows.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: ${{ steps.brand.outputs.app_name }}-windows.zip
+
+  build-android:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: PangHu-Code/client
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ github.event.inputs.branch }}
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r28
+          add-to-path: true
+          link-to-sdk: true
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Read brand config
+        id: brand
+        run: |
+          APP_NAME=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['app']['displayName'])")
+          VERSION=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['build']['version'])")
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Core (Android arm64-v8a)
+        env:
+          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          cd core
+          mkdir -p ../libclash/android/arm64-v8a
+          TOOLCHAIN=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64
+          CC=$TOOLCHAIN/bin/aarch64-linux-android21-clang
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$CC \
+            go build -ldflags="-w -s" -tags="with_gvisor" -buildmode=c-shared \
+            -o ../libclash/android/arm64-v8a/libclash.so
+          mkdir -p ../libclash/android/includes/arm64-v8a
+          cp ../libclash/android/arm64-v8a/libclash.h ../libclash/android/includes/arm64-v8a/ 2>/dev/null || true
+          cp bride.h ../libclash/android/includes/arm64-v8a/ 2>/dev/null || true
+          rm -f ../libclash/android/arm64-v8a/*.h 2>/dev/null || true
+
+      - name: Apply brand config
+        run: dart scripts/apply_brand.dart
+
+      - name: Setup Android signing
+        run: |
+          echo "storePassword=panghu123456" >> android/local.properties
+          echo "keyAlias=release" >> android/local.properties
+          echo "keyPassword=panghu123456" >> android/local.properties
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dorg.gradle.jvmargs=-Xmx4g"
+        run: |
+          ls -la libclash/android/arm64-v8a/
+          flutter build apk --release --dart-define=APP_ENV=stable
+
+      - name: Rename APK
+        run: mv build/app/outputs/flutter-apk/app-release.apk "${{ steps.brand.outputs.app_name }}-android.apk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: ${{ steps.brand.outputs.app_name }}-android.apk
