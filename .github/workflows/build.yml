@@ -3,10 +3,6 @@ name: Build Release
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: '私有仓库分支名 (如 client-git-x)'
-        required: true
-        default: 'main'
       platform:
         description: '选择构建平台'
         required: true
@@ -17,6 +13,23 @@ on:
           - macos
           - windows
           - android
+      # 品牌配置参数
+      brand_app_name:
+        description: '应用名称（英文，用于 exe/app 文件名）'
+        required: true
+        type: string
+      brand_display_name:
+        description: '显示名称（可中文，用于界面显示）'
+        required: true
+        type: string
+      brand_package_name:
+        description: '包名中间部分（英文小写，如填 abc 则包名为 com.abc.clash）'
+        required: true
+        type: string
+      brand_oss_urls:
+        description: 'OSS 配置地址（多个用逗号分隔）'
+        required: true
+        type: string
 
 jobs:
   build-macos:
@@ -28,7 +41,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ github.event.inputs.branch }}
+          ref: main
           submodules: recursive
 
       - name: Setup Go
@@ -43,13 +56,11 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Read brand config
+      - name: Set brand variables
         id: brand
         run: |
-          APP_NAME=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['app']['displayName'])")
-          VERSION=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['build']['version'])")
-          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "app_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
+          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
 
       - name: Build Core (macOS arm64)
         run: |
@@ -58,6 +69,11 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/macos/FlClashCore
 
       - name: Apply brand config
+        env:
+          BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
+          BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
+          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
         run: dart scripts/apply_brand.dart
 
       - name: Install dependencies
@@ -86,7 +102,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ github.event.inputs.branch }}
+          ref: main
           submodules: recursive
 
       - name: Setup Go
@@ -104,14 +120,12 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Read brand config
+      - name: Set brand variables
         id: brand
         shell: bash
         run: |
-          APP_NAME=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['app']['displayName'])")
-          VERSION=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['build']['version'])")
-          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "app_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
+          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
 
       - name: Build Core (Windows amd64)
         shell: bash
@@ -130,6 +144,11 @@ jobs:
           cp target/release/helper.exe ../../libclash/windows/FlClashHelperService.exe
 
       - name: Apply brand config
+        env:
+          BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
+          BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
+          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
         run: dart scripts/apply_brand.dart
 
       - name: Install dependencies
@@ -170,7 +189,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ github.event.inputs.branch }}
+          ref: main
           submodules: recursive
 
       - name: Setup Go
@@ -209,13 +228,11 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: Read brand config
+      - name: Set brand variables
         id: brand
         run: |
-          APP_NAME=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['app']['displayName'])")
-          VERSION=$(cat brand/brand_config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['build']['version'])")
-          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "app_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
+          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
 
       - name: Build Core (Android arm64-v8a)
         env:
@@ -234,6 +251,11 @@ jobs:
           rm -f ../libclash/android/arm64-v8a/*.h 2>/dev/null || true
 
       - name: Apply brand config
+        env:
+          BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
+          BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
+          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
         run: dart scripts/apply_brand.dart
 
       - name: Setup Android signing
