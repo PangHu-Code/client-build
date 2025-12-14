@@ -329,12 +329,16 @@ jobs:
         with:
           path: artifacts
 
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+
       - name: Upload to R2 and callback
         env:
           BUILD_ID: ${{ github.event.inputs.build_id }}
           CALLBACK_URL: ${{ github.event.inputs.callback_url }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
-          R2_UPLOAD_URL: ${{ secrets.R2_UPLOAD_URL }}
           PLATFORM: ${{ github.event.inputs.platform }}
           MACOS_RESULT: ${{ needs.build-macos.result }}
           MACOS_FILE_NAME: ${{ needs.build-macos.outputs.file_name }}
@@ -345,6 +349,10 @@ jobs:
           ANDROID_RESULT: ${{ needs.build-android.result }}
           ANDROID_FILE_NAME: ${{ needs.build-android.outputs.file_name }}
           ANDROID_FILE_SIZE: ${{ needs.build-android.outputs.file_size }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: "https://391f65c1b011cc9d37d9687a761b9ddf.r2.cloudflarestorage.com"
+          R2_BUCKET: "flclash-builds"
         run: |
           echo "Checking build results..."
 
@@ -353,15 +361,22 @@ jobs:
           ERROR_MESSAGE=""
           HAS_SUCCESS=false
 
+          # 上传函数：使用 AWS CLI 上传到 R2
+          upload_to_r2() {
+            local file_path=$1
+            local file_key=$2
+            echo "Uploading $file_key to R2..."
+            aws s3 cp "$file_path" "s3://$R2_BUCKET/$file_key" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --no-progress
+            echo "Upload complete: $file_key"
+          }
+
           # 检查 macOS
           if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "macos" ]; then
             if [ "$MACOS_RESULT" == "success" ] && [ -f "artifacts/macos-build/$MACOS_FILE_NAME" ]; then
-              echo "Uploading macOS build..."
               FILE_KEY="$BUILD_ID/macos/$MACOS_FILE_NAME"
-              curl -X POST "$R2_UPLOAD_URL/$FILE_KEY" \
-                -H "Authorization: Bearer $WEBHOOK_SECRET" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary "@artifacts/macos-build/$MACOS_FILE_NAME"
+              upload_to_r2 "artifacts/macos-build/$MACOS_FILE_NAME" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "macos" --arg file_key "$FILE_KEY" --arg file_size "$MACOS_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
@@ -373,12 +388,8 @@ jobs:
           # 检查 Windows
           if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "windows" ]; then
             if [ "$WINDOWS_RESULT" == "success" ] && [ -f "artifacts/windows-build/$WINDOWS_FILE_NAME" ]; then
-              echo "Uploading Windows build..."
               FILE_KEY="$BUILD_ID/windows/$WINDOWS_FILE_NAME"
-              curl -X POST "$R2_UPLOAD_URL/$FILE_KEY" \
-                -H "Authorization: Bearer $WEBHOOK_SECRET" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary "@artifacts/windows-build/$WINDOWS_FILE_NAME"
+              upload_to_r2 "artifacts/windows-build/$WINDOWS_FILE_NAME" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "windows" --arg file_key "$FILE_KEY" --arg file_size "$WINDOWS_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
@@ -390,12 +401,8 @@ jobs:
           # 检查 Android
           if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "android" ]; then
             if [ "$ANDROID_RESULT" == "success" ] && [ -f "artifacts/android-build/$ANDROID_FILE_NAME" ]; then
-              echo "Uploading Android build..."
               FILE_KEY="$BUILD_ID/android/$ANDROID_FILE_NAME"
-              curl -X POST "$R2_UPLOAD_URL/$FILE_KEY" \
-                -H "Authorization: Bearer $WEBHOOK_SECRET" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary "@artifacts/android-build/$ANDROID_FILE_NAME"
+              upload_to_r2 "artifacts/android-build/$ANDROID_FILE_NAME" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "android" --arg file_key "$FILE_KEY" --arg file_size "$ANDROID_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
