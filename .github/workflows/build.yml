@@ -30,11 +30,23 @@ on:
         description: 'OSS 配置地址（多个用逗号分隔）'
         required: true
         type: string
+      # Bot 回调参数（可选，Bot 触发时填写）
+      build_id:
+        description: '打包任务 ID（Bot 触发时自动填写）'
+        required: false
+        type: string
+      callback_url:
+        description: '回调地址（Bot 触发时自动填写）'
+        required: false
+        type: string
 
 jobs:
   build-macos:
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
     runs-on: macos-14
+    outputs:
+      file_name: ${{ steps.build.outputs.file_name }}
+      file_size: ${{ steps.build.outputs.file_size }}
     steps:
       - name: Checkout private repo
         uses: actions/checkout@v4
@@ -82,20 +94,28 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release --dart-define=APP_ENV=stable
 
-      - name: Create ZIP
+      - name: Create ZIP and get info
+        id: build
         run: |
           cd build/macos/Build/Products/Release
-          zip -r "${{ steps.brand.outputs.app_name }}-macos.zip" "${{ steps.brand.outputs.app_name }}.app"
+          FILE_NAME="${{ steps.brand.outputs.app_name }}-macos.zip"
+          zip -r "$FILE_NAME" "${{ steps.brand.outputs.app_name }}.app"
+          FILE_SIZE=$(stat -f%z "$FILE_NAME")
+          echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
+          echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-build
-          path: build/macos/Build/Products/Release/${{ steps.brand.outputs.app_name }}-macos.zip
+          path: build/macos/Build/Products/Release/${{ steps.build.outputs.file_name }}
 
   build-windows:
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
     runs-on: windows-latest
+    outputs:
+      file_name: ${{ steps.build.outputs.file_name }}
+      file_size: ${{ steps.build.outputs.file_size }}
     steps:
       - name: Checkout private repo
         uses: actions/checkout@v4
@@ -157,21 +177,29 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release --dart-define=APP_ENV=stable
 
-      - name: Create ZIP
+      - name: Create ZIP and get info
+        id: build
         shell: pwsh
         run: |
-          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "${{ steps.brand.outputs.app_name }}-windows.zip"
+          $FILE_NAME = "${{ steps.brand.outputs.app_name }}-windows.zip"
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath $FILE_NAME
+          $FILE_SIZE = (Get-Item $FILE_NAME).Length
+          echo "file_name=$FILE_NAME" >> $env:GITHUB_OUTPUT
+          echo "file_size=$FILE_SIZE" >> $env:GITHUB_OUTPUT
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: ${{ steps.brand.outputs.app_name }}-windows.zip
+          path: ${{ steps.build.outputs.file_name }}
 
   build-android:
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      file_name: ${{ steps.build.outputs.file_name }}
+      file_size: ${{ steps.build.outputs.file_size }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -274,11 +302,121 @@ jobs:
           ls -la libclash/android/arm64-v8a/
           flutter build apk --release --dart-define=APP_ENV=stable
 
-      - name: Rename APK
-        run: mv build/app/outputs/flutter-apk/app-release.apk "${{ steps.brand.outputs.app_name }}-android.apk"
+      - name: Rename APK and get info
+        id: build
+        run: |
+          FILE_NAME="${{ steps.brand.outputs.app_name }}-android.apk"
+          mv build/app/outputs/flutter-apk/app-release.apk "$FILE_NAME"
+          FILE_SIZE=$(stat -c%s "$FILE_NAME")
+          echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
+          echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-build
-          path: ${{ steps.brand.outputs.app_name }}-android.apk
+          path: ${{ steps.build.outputs.file_name }}
+
+  # 汇总并回调（仅当 Bot 触发时执行）
+  callback:
+    needs: [build-macos, build-windows, build-android]
+    # 即使部分平台跳过或失败也要执行回调
+    if: ${{ always() && github.event.inputs.build_id != '' && github.event.inputs.callback_url != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload to R2 and callback
+        env:
+          BUILD_ID: ${{ github.event.inputs.build_id }}
+          CALLBACK_URL: ${{ github.event.inputs.callback_url }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          R2_UPLOAD_URL: ${{ secrets.R2_UPLOAD_URL }}
+          PLATFORM: ${{ github.event.inputs.platform }}
+          MACOS_RESULT: ${{ needs.build-macos.result }}
+          MACOS_FILE_NAME: ${{ needs.build-macos.outputs.file_name }}
+          MACOS_FILE_SIZE: ${{ needs.build-macos.outputs.file_size }}
+          WINDOWS_RESULT: ${{ needs.build-windows.result }}
+          WINDOWS_FILE_NAME: ${{ needs.build-windows.outputs.file_name }}
+          WINDOWS_FILE_SIZE: ${{ needs.build-windows.outputs.file_size }}
+          ANDROID_RESULT: ${{ needs.build-android.result }}
+          ANDROID_FILE_NAME: ${{ needs.build-android.outputs.file_name }}
+          ANDROID_FILE_SIZE: ${{ needs.build-android.outputs.file_size }}
+        run: |
+          echo "Checking build results..."
+
+          # 收集成功的构建产物
+          ARTIFACTS='[]'
+          ERROR_MESSAGE=""
+          HAS_SUCCESS=false
+
+          # 检查 macOS
+          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "macos" ]; then
+            if [ "$MACOS_RESULT" == "success" ] && [ -f "artifacts/macos-build/$MACOS_FILE_NAME" ]; then
+              echo "Uploading macOS build..."
+              FILE_KEY="$BUILD_ID/macos/$MACOS_FILE_NAME"
+              curl -X POST "$R2_UPLOAD_URL/$FILE_KEY" \
+                -H "Authorization: Bearer $WEBHOOK_SECRET" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@artifacts/macos-build/$MACOS_FILE_NAME"
+              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "macos" --arg file_key "$FILE_KEY" --arg file_size "$MACOS_FILE_SIZE" \
+                '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
+              HAS_SUCCESS=true
+            else
+              ERROR_MESSAGE="${ERROR_MESSAGE}macOS 构建失败; "
+            fi
+          fi
+
+          # 检查 Windows
+          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "windows" ]; then
+            if [ "$WINDOWS_RESULT" == "success" ] && [ -f "artifacts/windows-build/$WINDOWS_FILE_NAME" ]; then
+              echo "Uploading Windows build..."
+              FILE_KEY="$BUILD_ID/windows/$WINDOWS_FILE_NAME"
+              curl -X POST "$R2_UPLOAD_URL/$FILE_KEY" \
+                -H "Authorization: Bearer $WEBHOOK_SECRET" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@artifacts/windows-build/$WINDOWS_FILE_NAME"
+              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "windows" --arg file_key "$FILE_KEY" --arg file_size "$WINDOWS_FILE_SIZE" \
+                '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
+              HAS_SUCCESS=true
+            else
+              ERROR_MESSAGE="${ERROR_MESSAGE}Windows 构建失败; "
+            fi
+          fi
+
+          # 检查 Android
+          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "android" ]; then
+            if [ "$ANDROID_RESULT" == "success" ] && [ -f "artifacts/android-build/$ANDROID_FILE_NAME" ]; then
+              echo "Uploading Android build..."
+              FILE_KEY="$BUILD_ID/android/$ANDROID_FILE_NAME"
+              curl -X POST "$R2_UPLOAD_URL/$FILE_KEY" \
+                -H "Authorization: Bearer $WEBHOOK_SECRET" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@artifacts/android-build/$ANDROID_FILE_NAME"
+              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "android" --arg file_key "$FILE_KEY" --arg file_size "$ANDROID_FILE_SIZE" \
+                '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
+              HAS_SUCCESS=true
+            else
+              ERROR_MESSAGE="${ERROR_MESSAGE}Android 构建失败; "
+            fi
+          fi
+
+          # 发送回调
+          if [ "$HAS_SUCCESS" == "true" ]; then
+            echo "Sending success callback..."
+            curl -X POST "$CALLBACK_URL" \
+              -H "Content-Type: application/json" \
+              -H "X-GitHub-Event: repository_dispatch" \
+              -H "X-Hub-Signature-256: $(echo -n "{\"action\":\"build_complete\",\"client_payload\":{\"build_id\":\"$BUILD_ID\",\"status\":\"success\",\"artifacts\":$ARTIFACTS}}" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* /sha256=/')" \
+              -d "{\"action\":\"build_complete\",\"client_payload\":{\"build_id\":\"$BUILD_ID\",\"status\":\"success\",\"artifacts\":$ARTIFACTS}}"
+          else
+            echo "Sending failure callback..."
+            curl -X POST "$CALLBACK_URL" \
+              -H "Content-Type: application/json" \
+              -H "X-GitHub-Event: repository_dispatch" \
+              -H "X-Hub-Signature-256: $(echo -n "{\"action\":\"build_complete\",\"client_payload\":{\"build_id\":\"$BUILD_ID\",\"status\":\"failed\",\"error_message\":\"$ERROR_MESSAGE\"}}" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* /sha256=/')" \
+              -d "{\"action\":\"build_complete\",\"client_payload\":{\"build_id\":\"$BUILD_ID\",\"status\":\"failed\",\"error_message\":\"$ERROR_MESSAGE\"}}"
+          fi
