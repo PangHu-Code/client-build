@@ -117,6 +117,8 @@ jobs:
     outputs:
       file_name: ${{ steps.build.outputs.file_name }}
       file_size: ${{ steps.build.outputs.file_size }}
+      exe_file_name: ${{ steps.build_exe.outputs.file_name }}
+      exe_file_size: ${{ steps.build_exe.outputs.file_size }}
     steps:
       - name: Checkout private repo
         uses: actions/checkout@v4
@@ -204,6 +206,27 @@ jobs:
         with:
           name: windows-build
           path: ${{ steps.build.outputs.file_name }}
+
+      - name: Build Inno Setup EXE
+        id: build_exe
+        shell: bash
+        run: |
+          dart scripts/build_inno_setup.dart \
+            --source-dir "build\\windows\\x64\\runner\\Release" \
+            --app-version "${{ steps.brand.outputs.app_name }}" \
+            --display-name "${{ steps.brand.outputs.display_name }}"
+          APP_NAME="${{ steps.brand.outputs.app_name }}"
+          FILE_NAME="${APP_NAME}-windows-setup.exe"
+          mv "windows/packaging/exe/${APP_NAME}.exe" "$FILE_NAME"
+          FILE_SIZE=$(stat -c%s "$FILE_NAME" 2>/dev/null || powershell -c "(Get-Item '$FILE_NAME').Length")
+          echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
+          echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe-build
+          path: ${{ steps.build_exe.outputs.file_name }}
 
   build-android:
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
@@ -357,6 +380,8 @@ jobs:
           WINDOWS_RESULT: ${{ needs.build-windows.result }}
           WINDOWS_FILE_NAME: ${{ needs.build-windows.outputs.file_name }}
           WINDOWS_FILE_SIZE: ${{ needs.build-windows.outputs.file_size }}
+          WINDOWS_EXE_FILE_NAME: ${{ needs.build-windows.outputs.exe_file_name }}
+          WINDOWS_EXE_FILE_SIZE: ${{ needs.build-windows.outputs.exe_file_size }}
           ANDROID_RESULT: ${{ needs.build-android.result }}
           ANDROID_FILE_NAME: ${{ needs.build-android.outputs.file_name }}
           ANDROID_FILE_SIZE: ${{ needs.build-android.outputs.file_size }}
@@ -406,6 +431,19 @@ jobs:
               HAS_SUCCESS=true
             else
               ERROR_MESSAGE="${ERROR_MESSAGE}Windows 构建失败; "
+            fi
+          fi
+
+          # 检查 Windows EXE
+          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "windows" ]; then
+            if [ "$WINDOWS_RESULT" == "success" ] && [ -n "$WINDOWS_EXE_FILE_NAME" ] && [ -f "artifacts/windows-exe-build/$WINDOWS_EXE_FILE_NAME" ]; then
+              FILE_KEY="$BUILD_ID/windows-exe/$WINDOWS_EXE_FILE_NAME"
+              upload_to_r2 "artifacts/windows-exe-build/$WINDOWS_EXE_FILE_NAME" "$FILE_KEY"
+              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "windows-exe" --arg file_key "$FILE_KEY" --arg file_size "$WINDOWS_EXE_FILE_SIZE" \
+                '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
+              HAS_SUCCESS=true
+            else
+              ERROR_MESSAGE="${ERROR_MESSAGE}Windows EXE 构建失败; "
             fi
           fi
 
