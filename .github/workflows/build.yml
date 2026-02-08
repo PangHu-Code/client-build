@@ -188,13 +188,11 @@ jobs:
           $releaseDir = "build\windows\x64\runner\Release"
           $FILE_NAME = "$appName-windows.zip"
 
-          # 创建显示名快捷方式指向 exe
-          $shell = New-Object -ComObject WScript.Shell
-          $shortcut = $shell.CreateShortcut("$releaseDir\$displayName.lnk")
-          $shortcut.TargetPath = (Resolve-Path "$releaseDir\$appName.exe").Path
-          $shortcut.WorkingDirectory = "%CD%"
-          $shortcut.IconLocation = (Resolve-Path "$releaseDir\$appName.exe").Path
-          $shortcut.Save()
+          # 当显示名与包名不同时，创建 .bat 启动脚本（纯文本，支持中文文件名）
+          if ($displayName -ne $appName) {
+            $batContent = "@echo off`r`nstart """" ""%~dp0$appName.exe"""
+            [System.IO.File]::WriteAllText("$releaseDir\$displayName.bat", $batContent, [System.Text.Encoding]::GetEncoding(936))
+          }
 
           Compress-Archive -Path "$releaseDir\*" -DestinationPath $FILE_NAME
           $FILE_SIZE = (Get-Item $FILE_NAME).Length
