@@ -71,7 +71,8 @@ jobs:
       - name: Set brand variables
         id: brand
         run: |
-          echo "app_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
+          echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
+          echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
           echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
 
       - name: Build Core (macOS arm64)
@@ -99,7 +100,7 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           FILE_NAME="${{ steps.brand.outputs.app_name }}-macos.zip"
-          zip -r "$FILE_NAME" "${{ steps.brand.outputs.app_name }}.app"
+          zip -r "$FILE_NAME" "${{ steps.brand.outputs.display_name }}.app"
           FILE_SIZE=$(stat -f%z "$FILE_NAME")
           echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
           echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
@@ -144,7 +145,8 @@ jobs:
         id: brand
         shell: bash
         run: |
-          echo "app_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
+          echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
+          echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
           echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
 
       - name: Build Core (Windows amd64)
@@ -181,8 +183,20 @@ jobs:
         id: build
         shell: pwsh
         run: |
-          $FILE_NAME = "${{ steps.brand.outputs.app_name }}-windows.zip"
-          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath $FILE_NAME
+          $displayName = "${{ steps.brand.outputs.display_name }}"
+          $appName = "${{ steps.brand.outputs.app_name }}"
+          $releaseDir = "build\windows\x64\runner\Release"
+          $FILE_NAME = "$appName-windows.zip"
+
+          # 创建显示名快捷方式指向 exe
+          $shell = New-Object -ComObject WScript.Shell
+          $shortcut = $shell.CreateShortcut("$releaseDir\$displayName.lnk")
+          $shortcut.TargetPath = (Resolve-Path "$releaseDir\$appName.exe").Path
+          $shortcut.WorkingDirectory = "%CD%"
+          $shortcut.IconLocation = (Resolve-Path "$releaseDir\$appName.exe").Path
+          $shortcut.Save()
+
+          Compress-Archive -Path "$releaseDir\*" -DestinationPath $FILE_NAME
           $FILE_SIZE = (Get-Item $FILE_NAME).Length
           echo "file_name=$FILE_NAME" >> $env:GITHUB_OUTPUT
           echo "file_size=$FILE_SIZE" >> $env:GITHUB_OUTPUT
@@ -259,7 +273,8 @@ jobs:
       - name: Set brand variables
         id: brand
         run: |
-          echo "app_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
+          echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
+          echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
           echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
 
       - name: Build Core (Android arm64-v8a)
