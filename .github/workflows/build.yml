@@ -204,7 +204,12 @@ jobs:
             $shell = New-Object -ComObject WScript.Shell
             $shortcutPath = Join-Path $releaseDirPath "$displayName.lnk"
             $shortcut = $shell.CreateShortcut($shortcutPath)
-            $shortcut.TargetPath = $batPath
+            $exePath = Join-Path $releaseDirPath "$appName.exe"
+            if (!(Test-Path $exePath)) {
+              throw "Launcher target exe not found: $exePath"
+            }
+            # 这里使用 ASCII 的 exe 作为 TargetPath，避免 COM 在中文 bat 路径上报错
+            $shortcut.TargetPath = $exePath
             $shortcut.WorkingDirectory = $releaseDirPath
             $shortcut.Description = "$displayName Launcher"
             $shortcut.Save()
