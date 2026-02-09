@@ -202,8 +202,15 @@ jobs:
 
             # 为 bat 启动器生成同名中文快捷方式，便于用户双击使用
             $shell = New-Object -ComObject WScript.Shell
+            $shortcutTempPath = Join-Path $releaseDirPath "__launcher__.lnk"
             $shortcutPath = Join-Path $releaseDirPath "$displayName.lnk"
-            $shortcut = $shell.CreateShortcut($shortcutPath)
+            if (Test-Path $shortcutTempPath) {
+              Remove-Item -Path $shortcutTempPath -Force
+            }
+            if (Test-Path $shortcutPath) {
+              Remove-Item -Path $shortcutPath -Force
+            }
+            $shortcut = $shell.CreateShortcut($shortcutTempPath)
             $exePath = Join-Path $releaseDirPath "$appName.exe"
             if (!(Test-Path $exePath)) {
               throw "Launcher target exe not found: $exePath"
@@ -213,6 +220,7 @@ jobs:
             $shortcut.WorkingDirectory = $releaseDirPath
             $shortcut.Description = "$displayName Launcher"
             $shortcut.Save()
+            Move-Item -Path $shortcutTempPath -Destination $shortcutPath -Force
           }
 
           Compress-Archive -Path "$releaseDir\*" -DestinationPath $FILE_NAME
