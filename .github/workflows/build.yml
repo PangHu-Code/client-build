@@ -194,6 +194,15 @@ jobs:
           if ($displayName -ne $appName) {
             $batContent = "@echo off`r`nstart """" ""%~dp0$appName.exe"""
             [System.IO.File]::WriteAllText("$releaseDir\$displayName.bat", $batContent, [System.Text.Encoding]::GetEncoding(936))
+
+            # 为 bat 启动器生成同名中文快捷方式，便于用户双击使用
+            $shell = New-Object -ComObject WScript.Shell
+            $shortcutPath = "$releaseDir\$displayName.lnk"
+            $shortcut = $shell.CreateShortcut($shortcutPath)
+            $shortcut.TargetPath = "$releaseDir\$displayName.bat"
+            $shortcut.WorkingDirectory = (Resolve-Path $releaseDir).Path
+            $shortcut.Description = "$displayName Launcher"
+            $shortcut.Save()
           }
 
           Compress-Archive -Path "$releaseDir\*" -DestinationPath $FILE_NAME
