@@ -188,12 +188,26 @@ jobs:
           $displayName = "${{ steps.brand.outputs.display_name }}"
           $appName = "${{ steps.brand.outputs.app_name }}"
           $releaseDir = "build\windows\x64\runner\Release"
+          $releaseDirPath = (Resolve-Path $releaseDir).Path
           $FILE_NAME = "$appName-windows.zip"
 
           # 当显示名与包名不同时，创建 .bat 启动脚本（纯文本，支持中文文件名）
           if ($displayName -ne $appName) {
             $batContent = "@echo off`r`nstart """" ""%~dp0$appName.exe"""
-            [System.IO.File]::WriteAllText("$releaseDir\$displayName.bat", $batContent, [System.Text.Encoding]::GetEncoding(936))
+            $batPath = Join-Path $releaseDirPath "$displayName.bat"
+            [System.IO.File]::WriteAllText($batPath, $batContent, [System.Text.Encoding]::GetEncoding(936))
+            if (!(Test-Path $batPath)) {
+              throw "Failed to create launcher bat: $batPath"
+            }
+
+            # 为 bat 启动器生成同名中文快捷方式，便于用户双击使用
+            $shell = New-Object -ComObject WScript.Shell
+            $shortcutPath = Join-Path $releaseDirPath "$displayName.lnk"
+            $shortcut = $shell.CreateShortcut($shortcutPath)
+            $shortcut.TargetPath = $batPath
+            $shortcut.WorkingDirectory = $releaseDirPath
+            $shortcut.Description = "$displayName Launcher"
+            $shortcut.Save()
           }
 
           Compress-Archive -Path "$releaseDir\*" -DestinationPath $FILE_NAME
