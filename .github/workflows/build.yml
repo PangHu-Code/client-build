@@ -163,12 +163,8 @@ jobs:
         run: |
           CORE_SHA256=$(sha256sum libclash/windows/FlClashCore.exe | cut -d ' ' -f1)
           echo "Core SHA256: $CORE_SHA256"
-          SERVICE_BASE=$(echo "${{ github.event.inputs.brand_app_name || 'FlClash' }}" | sed 's/[^A-Za-z0-9_]//g')
-          if [ -z "$SERVICE_BASE" ]; then SERVICE_BASE="FlClash"; fi
-          HELPER_SERVICE_NAME="${SERVICE_BASE}HelperService"
-          echo "Helper service name: $HELPER_SERVICE_NAME"
           cd services/helper
-          TOKEN=$CORE_SHA256 HELPER_SERVICE_NAME=$HELPER_SERVICE_NAME cargo build --release --features windows-service
+          TOKEN=$CORE_SHA256 cargo build --release --features windows-service
           cp target/release/helper.exe ../../libclash/windows/FlClashHelperService.exe
 
       - name: Apply brand config
