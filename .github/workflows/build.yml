@@ -53,7 +53,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: main
+          ref: test/v150-with-bot-recaptcha
           submodules: recursive
 
       - name: Setup Go
