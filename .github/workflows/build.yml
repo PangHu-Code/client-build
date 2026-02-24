@@ -65,7 +65,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.35.6'
           cache: true
 
       - name: Set brand variables
@@ -140,7 +140,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.35.6'
           cache: true
 
       - name: Set brand variables
@@ -305,7 +305,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.35.6'
           cache: true
 
       - name: Cache Gradle
