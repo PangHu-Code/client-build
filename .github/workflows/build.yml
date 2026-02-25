@@ -159,10 +159,12 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/windows/FlClashCore.exe
 
       - name: Build Helper Service
+        id: helper
         shell: bash
         run: |
           CORE_SHA256=$(sha256sum libclash/windows/FlClashCore.exe | cut -d ' ' -f1)
           echo "Core SHA256: $CORE_SHA256"
+          echo "core_sha256=$CORE_SHA256" >> $GITHUB_OUTPUT
           cd services/helper
           TOKEN=$CORE_SHA256 cargo build --release --features windows-service
           cp target/release/helper.exe ../../libclash/windows/FlClashHelperService.exe
@@ -179,7 +181,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release --dart-define=APP_ENV=stable
+        run: flutter build windows --release --dart-define=APP_ENV=stable --dart-define=CORE_SHA256=${{ steps.helper.outputs.core_sha256 }}
 
       - name: Create ZIP and get info
         id: build
