@@ -79,7 +79,7 @@ jobs:
         run: |
           cd core
           mkdir -p ../libclash/macos
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/macos/FlClashCore
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/macos/${{ steps.brand.outputs.app_name }}Core
 
       - name: Apply brand config
         env:
@@ -109,6 +109,76 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-build
+          path: build/macos/Build/Products/Release/${{ steps.build.outputs.file_name }}
+
+  build-macos-intel:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
+    runs-on: macos-13
+    outputs:
+      file_name: ${{ steps.build.outputs.file_name }}
+      file_size: ${{ steps.build.outputs.file_size }}
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: PangHu-Code/client
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: main
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.6'
+          cache: true
+
+      - name: Set brand variables
+        id: brand
+        run: |
+          echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
+          echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
+          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
+
+      - name: Build Core (macOS amd64)
+        run: |
+          cd core
+          mkdir -p ../libclash/macos
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/macos/${{ steps.brand.outputs.app_name }}Core
+
+      - name: Apply brand config
+        env:
+          BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
+          BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
+          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
+        run: dart scripts/apply_brand.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release --dart-define=APP_ENV=stable
+
+      - name: Create ZIP and get info
+        id: build
+        run: |
+          cd build/macos/Build/Products/Release
+          FILE_NAME="${{ steps.brand.outputs.app_name }}-macos-intel.zip"
+          zip -r "$FILE_NAME" "${{ steps.brand.outputs.display_name }}.app"
+          FILE_SIZE=$(stat -f%z "$FILE_NAME")
+          echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
+          echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-intel-build
           path: build/macos/Build/Products/Release/${{ steps.build.outputs.file_name }}
 
   build-windows:
@@ -156,18 +226,18 @@ jobs:
         run: |
           cd core
           mkdir -p ../libclash/windows
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/windows/FlClashCore.exe
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/windows/${{ steps.brand.outputs.app_name }}Core.exe
 
       - name: Build Helper Service
         id: helper
         shell: bash
         run: |
-          CORE_SHA256=$(sha256sum libclash/windows/FlClashCore.exe | cut -d ' ' -f1)
+          CORE_SHA256=$(sha256sum libclash/windows/${{ steps.brand.outputs.app_name }}Core.exe | cut -d ' ' -f1)
           echo "Core SHA256: $CORE_SHA256"
           echo "core_sha256=$CORE_SHA256" >> $GITHUB_OUTPUT
           cd services/helper
-          TOKEN=$CORE_SHA256 cargo build --release --features windows-service
-          cp target/release/helper.exe ../../libclash/windows/FlClashHelperService.exe
+          SERVICE_NAME="${{ steps.brand.outputs.app_name }}HelperService" TOKEN=$CORE_SHA256 cargo build --release --features windows-service
+          cp target/release/helper.exe ../../libclash/windows/${{ steps.brand.outputs.app_name }}HelperService.exe
 
       - name: Apply brand config
         env:
@@ -182,6 +252,16 @@ jobs:
 
       - name: Build Windows
         run: flutter build windows --release --dart-define=APP_ENV=stable --dart-define=CORE_SHA256=${{ steps.helper.outputs.core_sha256 }}
+
+      - name: Copy VC++ Runtime DLLs
+        shell: pwsh
+        run: |
+          $releaseDir = "build\windows\x64\runner\Release"
+          $vcDir = "${env:VCToolsRedistDir}x64\Microsoft.VC143.CRT"
+          foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
+            Copy-Item "$vcDir\$dll" "$releaseDir\" -Force
+            Write-Host "Copied $dll"
+          }
 
       - name: Create ZIP and get info
         id: build
@@ -235,6 +315,10 @@ jobs:
         with:
           name: windows-build
           path: ${{ steps.build.outputs.file_name }}
+
+      - name: Download VC++ Redistributable
+        shell: bash
+        run: curl -L -o vc_redist.x64.exe "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
       - name: Build Inno Setup EXE
         id: build_exe
@@ -384,7 +468,7 @@ jobs:
 
   # 汇总并回调（仅当 Bot 触发时执行）
   callback:
-    needs: [build-macos, build-windows, build-android]
+    needs: [build-macos, build-macos-intel, build-windows, build-android]
     # 即使部分平台跳过或失败也要执行回调
     if: ${{ always() && github.event.inputs.build_id != '' && github.event.inputs.callback_url != '' }}
     runs-on: ubuntu-latest
@@ -406,6 +490,9 @@ jobs:
           MACOS_RESULT: ${{ needs.build-macos.result }}
           MACOS_FILE_NAME: ${{ needs.build-macos.outputs.file_name }}
           MACOS_FILE_SIZE: ${{ needs.build-macos.outputs.file_size }}
+          MACOS_INTEL_RESULT: ${{ needs.build-macos-intel.result }}
+          MACOS_INTEL_FILE_NAME: ${{ needs.build-macos-intel.outputs.file_name }}
+          MACOS_INTEL_FILE_SIZE: ${{ needs.build-macos-intel.outputs.file_size }}
           WINDOWS_RESULT: ${{ needs.build-windows.result }}
           WINDOWS_FILE_NAME: ${{ needs.build-windows.outputs.file_name }}
           WINDOWS_FILE_SIZE: ${{ needs.build-windows.outputs.file_size }}
@@ -437,16 +524,29 @@ jobs:
             echo "Upload complete: $file_key"
           }
 
-          # 检查 macOS
+          # 检查 macOS (Apple Silicon)
           if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "macos" ]; then
             if [ "$MACOS_RESULT" == "success" ] && [ -f "artifacts/macos-build/$MACOS_FILE_NAME" ]; then
               FILE_KEY="$BUILD_ID/macos/$MACOS_FILE_NAME"
               upload_to_r2 "artifacts/macos-build/$MACOS_FILE_NAME" "$FILE_KEY"
-              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "macos" --arg file_key "$FILE_KEY" --arg file_size "$MACOS_FILE_SIZE" \
+              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "macos-arm64" --arg file_key "$FILE_KEY" --arg file_size "$MACOS_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
             else
               ERROR_MESSAGE="${ERROR_MESSAGE}macOS 构建失败; "
+            fi
+          fi
+
+          # 检查 macOS (Intel)
+          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "macos" ]; then
+            if [ "$MACOS_INTEL_RESULT" == "success" ] && [ -f "artifacts/macos-intel-build/$MACOS_INTEL_FILE_NAME" ]; then
+              FILE_KEY="$BUILD_ID/macos-intel/$MACOS_INTEL_FILE_NAME"
+              upload_to_r2 "artifacts/macos-intel-build/$MACOS_INTEL_FILE_NAME" "$FILE_KEY"
+              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "macos-amd64" --arg file_key "$FILE_KEY" --arg file_size "$MACOS_INTEL_FILE_SIZE" \
+                '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
+              HAS_SUCCESS=true
+            else
+              ERROR_MESSAGE="${ERROR_MESSAGE}macOS Intel 构建失败; "
             fi
           fi
 
@@ -455,7 +555,7 @@ jobs:
             if [ "$WINDOWS_RESULT" == "success" ] && [ -f "artifacts/windows-build/$WINDOWS_FILE_NAME" ]; then
               FILE_KEY="$BUILD_ID/windows/$WINDOWS_FILE_NAME"
               upload_to_r2 "artifacts/windows-build/$WINDOWS_FILE_NAME" "$FILE_KEY"
-              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "windows" --arg file_key "$FILE_KEY" --arg file_size "$WINDOWS_FILE_SIZE" \
+              ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "windows-zip" --arg file_key "$FILE_KEY" --arg file_size "$WINDOWS_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
             else
