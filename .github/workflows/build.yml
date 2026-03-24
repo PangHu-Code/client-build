@@ -258,7 +258,16 @@ jobs:
         shell: pwsh
         run: |
           $releaseDir = "build\windows\x64\runner\Release"
-          $vcDir = "${env:VCToolsRedistDir}x64\Microsoft.VC143.CRT"
+          # 使用 vswhere 动态定位 VC++ Redist 目录
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $redistBase = "$vsPath\VC\Redist\MSVC"
+          $redistVersion = Get-ChildItem $redistBase -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $vcDir = "$($redistVersion.FullName)\x64\Microsoft.VC143.CRT"
+          if (!(Test-Path $vcDir)) {
+            # 回退：尝试 VC142
+            $vcDir = "$($redistVersion.FullName)\x64\Microsoft.VC142.CRT"
+          }
+          Write-Host "VC++ Redist dir: $vcDir"
           foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
             Copy-Item "$vcDir\$dll" "$releaseDir\" -Force
             Write-Host "Copied $dll"
