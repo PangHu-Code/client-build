@@ -13,6 +13,12 @@ on:
           - macos
           - windows
           - android
+      # 源码分支（默认 main，定制构建时可手动选择其他分支）
+      client_ref:
+        description: '源码分支名（默认 main；如需打定制版，填写 PangHu-Code/client 上对应的分支名）'
+        required: false
+        default: 'main'
+        type: string
       # 品牌配置参数
       brand_app_name:
         description: '应用名称（英文，用于 exe/app 文件名）'
@@ -53,7 +59,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: main
+          ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
 
       - name: Setup Go
@@ -123,7 +129,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: main
+          ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
 
       - name: Setup Go
@@ -196,7 +202,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: main
+          ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
 
       - name: Setup Go
@@ -370,7 +376,7 @@ jobs:
         with:
           repository: PangHu-Code/client
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: main
+          ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
 
       - name: Setup Go
