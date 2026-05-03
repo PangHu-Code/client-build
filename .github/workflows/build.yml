@@ -60,7 +60,12 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
+          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+          if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+            echo "Failed to replace yaml_writer git dependency"
+            exit 1
+          fi
+          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -135,7 +140,12 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
+          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+          if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+            echo "Failed to replace yaml_writer git dependency"
+            exit 1
+          fi
+          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -213,7 +223,12 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
+          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+          if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+            echo "Failed to replace yaml_writer git dependency"
+            exit 1
+          fi
+          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -392,7 +407,12 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
+          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+          if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+            echo "Failed to replace yaml_writer git dependency"
+            exit 1
+          fi
+          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
