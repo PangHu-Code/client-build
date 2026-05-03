@@ -4,15 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: '选择构建平台'
+        description: '选择构建平台（all 或逗号分隔：macos,windows,android）'
         required: true
         default: 'all'
-        type: choice
-        options:
-          - all
-          - macos
-          - windows
-          - android
+        type: string
       # 源码分支（默认 main，定制构建时可手动选择其他分支）
       client_ref:
         description: '源码分支名（默认 main；如需打定制版，填写 PangHu-Code/client 上对应的分支名）'
@@ -48,7 +43,7 @@ on:
 
 jobs:
   build-macos:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
+    if: ${{ github.event.inputs.platform == 'all' || contains(format(',{0},', github.event.inputs.platform), ',macos,') }}
     runs-on: macos-14
     outputs:
       file_name: ${{ steps.build.outputs.file_name }}
@@ -61,6 +56,11 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
+
+      - name: Use published yaml_writer package
+        shell: bash
+        run: |
+          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -118,7 +118,7 @@ jobs:
           path: build/macos/Build/Products/Release/${{ steps.build.outputs.file_name }}
 
   build-macos-intel:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
+    if: ${{ github.event.inputs.platform == 'all' || contains(format(',{0},', github.event.inputs.platform), ',macos,') }}
     runs-on: macos-14
     outputs:
       file_name: ${{ steps.build.outputs.file_name }}
@@ -131,6 +131,11 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
+
+      - name: Use published yaml_writer package
+        shell: bash
+        run: |
+          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -189,7 +194,7 @@ jobs:
           path: build/macos/Build/Products/Release/${{ steps.build.outputs.file_name }}
 
   build-windows:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
+    if: ${{ github.event.inputs.platform == 'all' || contains(format(',{0},', github.event.inputs.platform), ',windows,') }}
     runs-on: windows-latest
     outputs:
       file_name: ${{ steps.build.outputs.file_name }}
@@ -204,6 +209,11 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
+
+      - name: Use published yaml_writer package
+        shell: bash
+        run: |
+          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -353,7 +363,7 @@ jobs:
           path: ${{ steps.build_exe.outputs.file_name }}
 
   build-android:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
+    if: ${{ github.event.inputs.platform == 'all' || contains(format(',{0},', github.event.inputs.platform), ',android,') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -378,6 +388,11 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ github.event.inputs.client_ref || 'main' }}
           submodules: recursive
+
+      - name: Use published yaml_writer package
+        shell: bash
+        run: |
+          perl -0pi -e 's#  yaml_writer:\n    git:\n      url: https://github\.com/chen08209/yaml_writer\n      ref: master#  yaml_writer: ^2.1.0#g' pubspec.yaml
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -524,6 +539,11 @@ jobs:
           ERROR_MESSAGE=""
           HAS_SUCCESS=false
 
+          should_build() {
+            local target=$1
+            [ "$PLATFORM" = "all" ] || [[ ",$PLATFORM," == *",$target,"* ]]
+          }
+
           # 上传函数：使用 AWS CLI 上传到 R2
           upload_to_r2() {
             local file_path=$1
@@ -536,7 +556,7 @@ jobs:
           }
 
           # 检查 macOS (Apple Silicon)
-          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "macos" ]; then
+          if should_build "macos"; then
             if [ "$MACOS_RESULT" == "success" ] && [ -f "artifacts/macos-build/$MACOS_FILE_NAME" ]; then
               FILE_KEY="$BUILD_ID/macos/$MACOS_FILE_NAME"
               upload_to_r2 "artifacts/macos-build/$MACOS_FILE_NAME" "$FILE_KEY"
@@ -549,7 +569,7 @@ jobs:
           fi
 
           # 检查 macOS (Intel)
-          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "macos" ]; then
+          if should_build "macos"; then
             if [ "$MACOS_INTEL_RESULT" == "success" ] && [ -f "artifacts/macos-intel-build/$MACOS_INTEL_FILE_NAME" ]; then
               FILE_KEY="$BUILD_ID/macos-intel/$MACOS_INTEL_FILE_NAME"
               upload_to_r2 "artifacts/macos-intel-build/$MACOS_INTEL_FILE_NAME" "$FILE_KEY"
@@ -562,7 +582,7 @@ jobs:
           fi
 
           # 检查 Windows
-          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "windows" ]; then
+          if should_build "windows"; then
             if [ "$WINDOWS_RESULT" == "success" ] && [ -f "artifacts/windows-build/$WINDOWS_FILE_NAME" ]; then
               FILE_KEY="$BUILD_ID/windows/$WINDOWS_FILE_NAME"
               upload_to_r2 "artifacts/windows-build/$WINDOWS_FILE_NAME" "$FILE_KEY"
@@ -575,7 +595,7 @@ jobs:
           fi
 
           # 检查 Windows EXE
-          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "windows" ]; then
+          if should_build "windows"; then
             if [ "$WINDOWS_RESULT" == "success" ] && [ -n "$WINDOWS_EXE_FILE_NAME" ] && [ -f "artifacts/windows-exe-build/$WINDOWS_EXE_FILE_NAME" ]; then
               FILE_KEY="$BUILD_ID/windows-exe/$WINDOWS_EXE_FILE_NAME"
               upload_to_r2 "artifacts/windows-exe-build/$WINDOWS_EXE_FILE_NAME" "$FILE_KEY"
@@ -588,7 +608,7 @@ jobs:
           fi
 
           # 检查 Android
-          if [ "$PLATFORM" == "all" ] || [ "$PLATFORM" == "android" ]; then
+          if should_build "android"; then
             if [ "$ANDROID_RESULT" == "success" ] && [ -f "artifacts/android-build/$ANDROID_FILE_NAME" ]; then
               FILE_KEY="$BUILD_ID/android/$ANDROID_FILE_NAME"
               upload_to_r2 "artifacts/android-build/$ANDROID_FILE_NAME" "$FILE_KEY"
