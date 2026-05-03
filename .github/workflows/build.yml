@@ -60,12 +60,14 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
           if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
-            echo "Failed to replace yaml_writer git dependency"
-            exit 1
+            perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+            if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+              echo "Failed to replace yaml_writer git dependency"
+              exit 1
+            fi
+            rm -f pubspec.lock
           fi
-          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -140,12 +142,14 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
           if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
-            echo "Failed to replace yaml_writer git dependency"
-            exit 1
+            perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+            if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+              echo "Failed to replace yaml_writer git dependency"
+              exit 1
+            fi
+            rm -f pubspec.lock
           fi
-          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -223,12 +227,14 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
           if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
-            echo "Failed to replace yaml_writer git dependency"
-            exit 1
+            perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+            if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+              echo "Failed to replace yaml_writer git dependency"
+              exit 1
+            fi
+            rm -f pubspec.lock
           fi
-          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -290,9 +296,15 @@ jobs:
         run: |
           $releaseDir = "build\windows\x64\runner\Release"
           $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          if (!$vsPath) {
+            throw "Visual Studio installation not found"
+          }
           $redistBase = "$vsPath\VC\Redist\MSVC"
           # 动态查找 CRT 目录（名称可能是 Microsoft.VC14x.CRT）
           $vcDir = Get-ChildItem "$redistBase\*\x64\Microsoft.VC*.CRT" -Directory | Select-Object -First 1
+          if (!$vcDir) {
+            throw "VC++ CRT directory not found under $redistBase"
+          }
           Write-Host "VC++ CRT dir: $($vcDir.FullName)"
           foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
             Copy-Item "$($vcDir.FullName)\$dll" "$releaseDir\" -Force
@@ -354,7 +366,7 @@ jobs:
 
       - name: Download VC++ Redistributable
         shell: bash
-        run: curl -L -o vc_redist.x64.exe "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+        run: curl -fsSL --retry 3 -o vc_redist.x64.exe "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
       - name: Build Inno Setup EXE
         id: build_exe
@@ -407,12 +419,14 @@ jobs:
       - name: Use published yaml_writer package
         shell: bash
         run: |
-          perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
           if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
-            echo "Failed to replace yaml_writer git dependency"
-            exit 1
+            perl -0pi -e "s#  yaml_writer:\r?\n    git:\r?\n      url: [\"']?https://github\.com/chen08209/yaml_writer[\"']?\r?\n      ref: [\"']?master[\"']?#  yaml_writer: ^2.1.0#g" pubspec.yaml
+            if grep -q "github.com/chen08209/yaml_writer" pubspec.yaml; then
+              echo "Failed to replace yaml_writer git dependency"
+              exit 1
+            fi
+            rm -f pubspec.lock
           fi
-          rm -f pubspec.lock
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -521,6 +535,7 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: artifacts
 
