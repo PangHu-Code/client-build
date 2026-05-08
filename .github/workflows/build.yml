@@ -23,8 +23,8 @@ on:
         description: '显示名称（可中文，用于界面显示）'
         required: true
         type: string
-      brand_package_name:
-        description: '包名中间部分（英文小写，如填 abc 则包名为 com.abc.clash）'
+      brand_package_id:
+        description: '完整包名（如 com.panghu.demo）'
         required: true
         type: string
       brand_oss_urls:
@@ -86,7 +86,7 @@ jobs:
         run: |
           echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
           echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
-          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
+          echo "package_id=${{ github.event.inputs.brand_package_id }}" >> $GITHUB_OUTPUT
 
       - name: Build Core (macOS arm64)
         run: |
@@ -98,7 +98,7 @@ jobs:
         env:
           BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
-          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
         run: dart scripts/apply_brand.dart
 
@@ -169,7 +169,7 @@ jobs:
         run: |
           echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
           echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
-          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
+          echo "package_id=${{ github.event.inputs.brand_package_id }}" >> $GITHUB_OUTPUT
 
       - name: Build Core (macOS amd64)
         run: |
@@ -181,7 +181,7 @@ jobs:
         env:
           BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
-          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
         run: dart scripts/apply_brand.dart
 
@@ -257,7 +257,7 @@ jobs:
         run: |
           echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
           echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
-          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
+          echo "package_id=${{ github.event.inputs.brand_package_id }}" >> $GITHUB_OUTPUT
 
       - name: Build Core (Windows amd64)
         shell: bash
@@ -281,7 +281,7 @@ jobs:
         env:
           BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
-          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
         run: dart scripts/apply_brand.dart
 
@@ -469,7 +469,7 @@ jobs:
         run: |
           echo "app_name=${{ github.event.inputs.brand_app_name }}" >> $GITHUB_OUTPUT
           echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
-          echo "package_id=com.${{ github.event.inputs.brand_package_name }}.clash" >> $GITHUB_OUTPUT
+          echo "package_id=${{ github.event.inputs.brand_package_id }}" >> $GITHUB_OUTPUT
 
       - name: Build Core (Android arm64-v8a)
         env:
@@ -491,7 +491,7 @@ jobs:
         env:
           BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
-          BRAND_PACKAGE_ID: com.${{ github.event.inputs.brand_package_name }}.clash
+          BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
         run: dart scripts/apply_brand.dart
 
