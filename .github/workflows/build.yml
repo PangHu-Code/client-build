@@ -75,7 +75,7 @@ jobs:
           go-version: '1.22'
           cache-dependency-path: core/go.sum
 
-      - name: Setup Flutter
+      - name: Setup Flutter (macOS arm64)
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.6'
@@ -245,7 +245,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Flutter
+      - name: Setup Flutter (Windows)
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.6'
@@ -448,7 +448,7 @@ jobs:
           add-to-path: true
           link-to-sdk: true
 
-      - name: Setup Flutter
+      - name: Setup Flutter (Android)
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.6'
