@@ -265,24 +265,6 @@ jobs:
           echo "display_name=${{ github.event.inputs.brand_display_name }}" >> $GITHUB_OUTPUT
           echo "package_id=${{ github.event.inputs.brand_package_id }}" >> $GITHUB_OUTPUT
 
-      - name: Build Core (Windows amd64)
-        shell: bash
-        run: |
-          cd core
-          mkdir -p ../libclash/windows
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -tags="with_gvisor" -o ../libclash/windows/${{ steps.brand.outputs.app_name }}Core.exe
-
-      - name: Build Helper Service
-        id: helper
-        shell: bash
-        run: |
-          CORE_SHA256=$(sha256sum libclash/windows/${{ steps.brand.outputs.app_name }}Core.exe | cut -d ' ' -f1)
-          echo "Core SHA256: $CORE_SHA256"
-          echo "core_sha256=$CORE_SHA256" >> $GITHUB_OUTPUT
-          cd services/helper
-          SERVICE_NAME="${{ steps.brand.outputs.app_name }}HelperService" TOKEN=$CORE_SHA256 cargo build --release --features windows-service
-          cp target/release/helper.exe ../../libclash/windows/${{ steps.brand.outputs.app_name }}HelperService.exe
-
       - name: Apply brand config
         env:
           BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
@@ -293,6 +275,20 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      # v0.8.93: buildkit 预编译 Go core + Rust helper，写 core_sha256.json
+      # apply_brand 已生成 build_config.yaml（品牌化 core/helper 名）；
+      # helper 的 SERVICE_NAME 由 buildkit rust_builder 注入（= helper_name）。
+      - name: Build Core + Helper (buildkit)
+        id: helper
+        shell: bash
+        env:
+          PROJECT_DIR: ${{ github.workspace }}
+        run: |
+          bash plugins/setup/buildkit/run_build_tool.sh windows
+          CORE_SHA256=$(python -c "import json;print(json.load(open('core_sha256.json'))['CORE_SHA256'])")
+          echo "Core SHA256: $CORE_SHA256"
+          echo "core_sha256=$CORE_SHA256" >> $GITHUB_OUTPUT
 
       - name: Build Windows
         run: flutter build windows --release --dart-define=APP_ENV=stable --dart-define=CORE_SHA256=${{ steps.helper.outputs.core_sha256 }}
