@@ -281,14 +281,13 @@ jobs:
       # helper 的 SERVICE_NAME 由 buildkit rust_builder 注入（= helper_name）。
       - name: Build Core + Helper (buildkit)
         id: helper
-        shell: bash
-        env:
-          PROJECT_DIR: ${{ github.workspace }}
+        shell: pwsh
         run: |
-          bash plugins/setup/buildkit/run_build_tool.sh windows
-          CORE_SHA256=$(python -c "import json;print(json.load(open('core_sha256.json'))['CORE_SHA256'])")
-          echo "Core SHA256: $CORE_SHA256"
-          echo "core_sha256=$CORE_SHA256" >> $GITHUB_OUTPUT
+          & "plugins/setup/buildkit/run_build_tool.cmd" windows
+          if ($LASTEXITCODE -ne 0) { throw "build_tool windows failed: $LASTEXITCODE" }
+          $sha = (Get-Content core_sha256.json -Raw | ConvertFrom-Json).CORE_SHA256
+          Write-Host "Core SHA256: $sha"
+          "core_sha256=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Build Windows
         run: flutter build windows --release --dart-define=APP_ENV=stable --dart-define=CORE_SHA256=${{ steps.helper.outputs.core_sha256 }}
