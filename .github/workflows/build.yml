@@ -72,13 +72,16 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.24.0'
           cache-dependency-path: core/go.sum
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Flutter (macOS arm64)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.6'
+          flutter-version: '3.44.0'
           cache: true
 
       - name: Set brand variables
@@ -154,13 +157,16 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.24.0'
           cache-dependency-path: core/go.sum
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Flutter (x86_64 via Rosetta)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.6'
+          flutter-version: '3.44.0'
           architecture: x64
           cache: true
 
@@ -239,7 +245,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.24.0'
           cache-dependency-path: core/go.sum
 
       - name: Setup Rust
@@ -248,7 +254,7 @@ jobs:
       - name: Setup Flutter (Windows)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.6'
+          flutter-version: '3.44.0'
           cache: true
 
       - name: Set brand variables
@@ -431,7 +437,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.24.0'
           cache-dependency-path: core/go.sum
 
       - name: Setup Java
@@ -448,10 +454,13 @@ jobs:
           add-to-path: true
           link-to-sdk: true
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Setup Flutter (Android)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.6'
+          flutter-version: '3.44.0'
           cache: true
 
       - name: Cache Gradle
