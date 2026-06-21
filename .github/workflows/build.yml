@@ -84,6 +84,14 @@ jobs:
           flutter-version: '3.44.0'
           cache: true
 
+      - name: Cache Pub
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
       - name: Set brand variables
         id: brand
         run: |
@@ -169,6 +177,14 @@ jobs:
           flutter-version: '3.44.0'
           architecture: x64
           cache: true
+
+      - name: Cache Pub
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
 
       - name: Set brand variables
         id: brand
@@ -474,6 +490,14 @@ jobs:
         with:
           flutter-version: '3.44.0'
           cache: true
+
+      - name: Cache Pub
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
 
       - name: Cache Gradle
         uses: actions/cache@v4
