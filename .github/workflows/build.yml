@@ -251,6 +251,17 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            services/helper/target
+          key: cargo-windows-helper-${{ runner.os }}-${{ hashFiles('services/helper/Cargo.lock') }}
+          restore-keys: |
+            cargo-windows-helper-${{ runner.os }}-
+
       - name: Setup Flutter (Windows)
         uses: subosito/flutter-action@v2
         with:
@@ -275,6 +286,12 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Fetch Rust dependencies
+        shell: bash
+        run: |
+          cd services/helper
+          cargo fetch --locked
 
       # v0.8.93: buildkit 预编译 Go core + Rust helper，写 core_sha256.json
       # apply_brand 已生成 build_config.yaml（品牌化 core/helper 名）；
