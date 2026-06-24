@@ -78,6 +78,42 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Configure Cargo
+        shell: bash
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml <<'EOF'
+          [registries.crates-io]
+          protocol = "sparse"
+
+          [net]
+          retry = 5
+          git-fetch-with-cli = true
+          EOF
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-macos-rust-api-${{ runner.os }}-${{ hashFiles('plugins/rust_api/rust/Cargo.lock') }}
+          restore-keys: |
+            cargo-macos-rust-api-${{ runner.os }}-
+
+      - name: Fetch Rust dependencies
+        shell: bash
+        run: |
+          cd plugins/rust_api/rust
+          for attempt in 1 2 3; do
+            if cargo fetch --locked; then
+              exit 0
+            fi
+            echo "cargo fetch failed on attempt ${attempt}; retrying..."
+            sleep $((attempt * 10))
+          done
+          cargo fetch --locked
+
       - name: Setup Flutter (macOS arm64)
         uses: subosito/flutter-action@v2
         with:
@@ -170,6 +206,42 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure Cargo
+        shell: bash
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml <<'EOF'
+          [registries.crates-io]
+          protocol = "sparse"
+
+          [net]
+          retry = 5
+          git-fetch-with-cli = true
+          EOF
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-macos-rust-api-${{ runner.os }}-${{ hashFiles('plugins/rust_api/rust/Cargo.lock') }}
+          restore-keys: |
+            cargo-macos-rust-api-${{ runner.os }}-
+
+      - name: Fetch Rust dependencies
+        shell: bash
+        run: |
+          cd plugins/rust_api/rust
+          for attempt in 1 2 3; do
+            if cargo fetch --locked; then
+              exit 0
+            fi
+            echo "cargo fetch failed on attempt ${attempt}; retrying..."
+            sleep $((attempt * 10))
+          done
+          cargo fetch --locked
 
       - name: Setup Flutter (x86_64 via Rosetta)
         uses: subosito/flutter-action@v2
