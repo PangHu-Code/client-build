@@ -155,12 +155,43 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release --dart-define=APP_ENV=stable
 
-      - name: Create ZIP and get info
+      - name: Install appdmg
+        run: npm install -g appdmg
+
+      - name: Create DMG and get info
         id: build
         run: |
           cd build/macos/Build/Products/Release
-          FILE_NAME="${{ steps.brand.outputs.app_name }}-macos.zip"
-          zip -r "$FILE_NAME" "${{ steps.brand.outputs.display_name }}.app"
+          APP_NAME="${{ steps.brand.outputs.app_name }}"
+          DISPLAY_NAME="${{ steps.brand.outputs.display_name }}"
+
+          # 创建 DMG 配置文件
+          cat > dmg_config.json <<EOF
+          {
+            "title": "$DISPLAY_NAME",
+            "icon": "../../../../macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
+            "background": "../../../../macos/packaging/dmg/background.png",
+            "window": {
+              "size": {
+                "width": 660,
+                "height": 400
+              }
+            },
+            "contents": [
+              { "x": 180, "y": 170, "type": "file", "path": "$DISPLAY_NAME.app" },
+              { "x": 480, "y": 170, "type": "link", "path": "/Applications" }
+            ]
+          }
+          EOF
+
+          # 生成 DMG
+          FILE_NAME="${APP_NAME}-macos-arm64.dmg"
+          appdmg dmg_config.json "$FILE_NAME" || {
+            echo "appdmg failed, fallback to ZIP"
+            FILE_NAME="${APP_NAME}-macos.zip"
+            zip -r "$FILE_NAME" "$DISPLAY_NAME.app"
+          }
+
           FILE_SIZE=$(stat -f%z "$FILE_NAME")
           echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
           echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
@@ -285,12 +316,43 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release --dart-define=APP_ENV=stable
 
-      - name: Create ZIP and get info
+      - name: Install appdmg
+        run: npm install -g appdmg
+
+      - name: Create DMG and get info
         id: build
         run: |
           cd build/macos/Build/Products/Release
-          FILE_NAME="${{ steps.brand.outputs.app_name }}-macos-intel.zip"
-          zip -r "$FILE_NAME" "${{ steps.brand.outputs.display_name }}.app"
+          APP_NAME="${{ steps.brand.outputs.app_name }}"
+          DISPLAY_NAME="${{ steps.brand.outputs.display_name }}"
+
+          # 创建 DMG 配置文件
+          cat > dmg_config.json <<EOF
+          {
+            "title": "$DISPLAY_NAME",
+            "icon": "../../../../macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
+            "background": "../../../../macos/packaging/dmg/background.png",
+            "window": {
+              "size": {
+                "width": 660,
+                "height": 400
+              }
+            },
+            "contents": [
+              { "x": 180, "y": 170, "type": "file", "path": "$DISPLAY_NAME.app" },
+              { "x": 480, "y": 170, "type": "link", "path": "/Applications" }
+            ]
+          }
+          EOF
+
+          # 生成 DMG
+          FILE_NAME="${APP_NAME}-macos-intel.dmg"
+          appdmg dmg_config.json "$FILE_NAME" || {
+            echo "appdmg failed, fallback to ZIP"
+            FILE_NAME="${APP_NAME}-macos-intel.zip"
+            zip -r "$FILE_NAME" "$DISPLAY_NAME.app"
+          }
+
           FILE_SIZE=$(stat -f%z "$FILE_NAME")
           echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
           echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
@@ -478,10 +540,14 @@ jobs:
         id: build_exe
         shell: bash
         run: |
+          # 从 pubspec.yaml 读取版本号
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+
           dart scripts/build_inno_setup.dart \
             --source-dir "build\\windows\\x64\\runner\\Release" \
-            --app-version "${{ steps.brand.outputs.app_name }}" \
+            --app-version "$VERSION" \
             --display-name "${{ steps.brand.outputs.display_name }}"
+
           APP_NAME="${{ steps.brand.outputs.app_name }}"
           FILE_NAME="${APP_NAME}-windows-setup.exe"
           mv "windows/packaging/exe/${APP_NAME}.exe" "$FILE_NAME"
@@ -710,11 +776,18 @@ jobs:
           # 检查 macOS (Apple Silicon)
           if should_build "macos"; then
             if [ "$MACOS_RESULT" == "success" ] && [ -f "artifacts/macos-build/$MACOS_FILE_NAME" ]; then
-              FILE_KEY="$BUILD_ID/macos/$MACOS_FILE_NAME"
-              upload_to_r2 "artifacts/macos-build/$MACOS_FILE_NAME" "$FILE_KEY"
+              # 本地化文件名：飞驰代理-macOS-arm64.dmg（用户下载体验优化）
+              DISPLAY_NAME="${{ github.event.inputs.brand_display_name }}"
+              EXT="${MACOS_FILE_NAME##*.}"  # 提取扩展名 dmg 或 zip
+              LOCALIZED_FILE="${DISPLAY_NAME}-macOS-arm64.${EXT}"
+              cp "artifacts/macos-build/$MACOS_FILE_NAME" "$LOCALIZED_FILE"
+
+              FILE_KEY="$BUILD_ID/macos/$LOCALIZED_FILE"
+              upload_to_r2 "$LOCALIZED_FILE" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "macos-arm64" --arg file_key "$FILE_KEY" --arg file_size "$MACOS_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
+              rm -f "$LOCALIZED_FILE"
             else
               ERROR_MESSAGE="${ERROR_MESSAGE}macOS 构建失败; "
             fi
@@ -723,24 +796,37 @@ jobs:
           # 检查 macOS (Intel)
           if should_build "macos"; then
             if [ "$MACOS_INTEL_RESULT" == "success" ] && [ -f "artifacts/macos-intel-build/$MACOS_INTEL_FILE_NAME" ]; then
-              FILE_KEY="$BUILD_ID/macos-intel/$MACOS_INTEL_FILE_NAME"
-              upload_to_r2 "artifacts/macos-intel-build/$MACOS_INTEL_FILE_NAME" "$FILE_KEY"
+              # 本地化文件名：飞驰代理-macOS-intel.dmg（用户下载体验优化）
+              DISPLAY_NAME="${{ github.event.inputs.brand_display_name }}"
+              EXT="${MACOS_INTEL_FILE_NAME##*.}"  # 提取扩展名 dmg 或 zip
+              LOCALIZED_FILE="${DISPLAY_NAME}-macOS-intel.${EXT}"
+              cp "artifacts/macos-intel-build/$MACOS_INTEL_FILE_NAME" "$LOCALIZED_FILE"
+
+              FILE_KEY="$BUILD_ID/macos-intel/$LOCALIZED_FILE"
+              upload_to_r2 "$LOCALIZED_FILE" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "macos-amd64" --arg file_key "$FILE_KEY" --arg file_size "$MACOS_INTEL_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
+              rm -f "$LOCALIZED_FILE"
             else
               ERROR_MESSAGE="${ERROR_MESSAGE}macOS Intel 构建失败; "
             fi
           fi
 
-          # 检查 Windows
+          # 检查 Windows ZIP
           if should_build "windows"; then
             if [ "$WINDOWS_RESULT" == "success" ] && [ -f "artifacts/windows-build/$WINDOWS_FILE_NAME" ]; then
-              FILE_KEY="$BUILD_ID/windows/$WINDOWS_FILE_NAME"
-              upload_to_r2 "artifacts/windows-build/$WINDOWS_FILE_NAME" "$FILE_KEY"
+              # 本地化文件名：飞驰代理-windows.zip（用户下载体验优化）
+              DISPLAY_NAME="${{ github.event.inputs.brand_display_name }}"
+              LOCALIZED_ZIP="${DISPLAY_NAME}-windows.zip"
+              cp "artifacts/windows-build/$WINDOWS_FILE_NAME" "$LOCALIZED_ZIP"
+
+              FILE_KEY="$BUILD_ID/windows/$LOCALIZED_ZIP"
+              upload_to_r2 "$LOCALIZED_ZIP" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "windows-zip" --arg file_key "$FILE_KEY" --arg file_size "$WINDOWS_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
+              rm -f "$LOCALIZED_ZIP"
             else
               ERROR_MESSAGE="${ERROR_MESSAGE}Windows 构建失败; "
             fi
@@ -749,11 +835,17 @@ jobs:
           # 检查 Windows EXE
           if should_build "windows"; then
             if [ "$WINDOWS_RESULT" == "success" ] && [ -n "$WINDOWS_EXE_FILE_NAME" ] && [ -f "artifacts/windows-exe-build/$WINDOWS_EXE_FILE_NAME" ]; then
-              FILE_KEY="$BUILD_ID/windows-exe/$WINDOWS_EXE_FILE_NAME"
-              upload_to_r2 "artifacts/windows-exe-build/$WINDOWS_EXE_FILE_NAME" "$FILE_KEY"
+              # 本地化文件名：飞驰代理-Setup.exe（用户下载体验优化）
+              DISPLAY_NAME="${{ github.event.inputs.brand_display_name }}"
+              LOCALIZED_EXE="${DISPLAY_NAME}-Setup.exe"
+              cp "artifacts/windows-exe-build/$WINDOWS_EXE_FILE_NAME" "$LOCALIZED_EXE"
+
+              FILE_KEY="$BUILD_ID/windows-exe/$LOCALIZED_EXE"
+              upload_to_r2 "$LOCALIZED_EXE" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "windows-exe" --arg file_key "$FILE_KEY" --arg file_size "$WINDOWS_EXE_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
+              rm -f "$LOCALIZED_EXE"
             else
               ERROR_MESSAGE="${ERROR_MESSAGE}Windows EXE 构建失败; "
             fi
@@ -762,11 +854,17 @@ jobs:
           # 检查 Android
           if should_build "android"; then
             if [ "$ANDROID_RESULT" == "success" ] && [ -f "artifacts/android-build/$ANDROID_FILE_NAME" ]; then
-              FILE_KEY="$BUILD_ID/android/$ANDROID_FILE_NAME"
-              upload_to_r2 "artifacts/android-build/$ANDROID_FILE_NAME" "$FILE_KEY"
+              # 本地化文件名：飞驰代理.apk（用户下载体验优化）
+              DISPLAY_NAME="${{ github.event.inputs.brand_display_name }}"
+              LOCALIZED_APK="${DISPLAY_NAME}.apk"
+              cp "artifacts/android-build/$ANDROID_FILE_NAME" "$LOCALIZED_APK"
+
+              FILE_KEY="$BUILD_ID/android/$LOCALIZED_APK"
+              upload_to_r2 "$LOCALIZED_APK" "$FILE_KEY"
               ARTIFACTS=$(echo "$ARTIFACTS" | jq --arg platform "android" --arg file_key "$FILE_KEY" --arg file_size "$ANDROID_FILE_SIZE" \
                 '. + [{"platform": $platform, "file_key": $file_key, "file_size": ($file_size | tonumber)}]')
               HAS_SUCCESS=true
+              rm -f "$LOCALIZED_APK"
             else
               ERROR_MESSAGE="${ERROR_MESSAGE}Android 构建失败; "
             fi
