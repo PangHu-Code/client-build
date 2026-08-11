@@ -616,7 +616,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r28
+          ndk-version: r28c
           add-to-path: true
           link-to-sdk: true
 
@@ -689,6 +689,7 @@ jobs:
 
       - name: Build APK
         env:
+          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dorg.gradle.jvmargs=-Xmx4g"
         run: |
           ls -la libclash/android/arm64-v8a/
