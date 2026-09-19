@@ -31,6 +31,11 @@ on:
         description: 'OSS 配置地址（多个用逗号分隔）'
         required: true
         type: string
+      brand_fixed_invite_code:
+        description: '固定邀请码（可选）'
+        required: false
+        default: ''
+        type: string
       # Bot 回调参数（可选，Bot 触发时填写）
       build_id:
         description: '打包任务 ID（Bot 触发时自动填写）'
@@ -147,6 +152,7 @@ jobs:
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
           BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
+          BRAND_FIXED_INVITE_CODE: ${{ github.event.inputs.brand_fixed_invite_code }}
         run: dart scripts/apply_brand.dart
 
       - name: Install dependencies
@@ -308,6 +314,7 @@ jobs:
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
           BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
+          BRAND_FIXED_INVITE_CODE: ${{ github.event.inputs.brand_fixed_invite_code }}
         run: dart scripts/apply_brand.dart
 
       - name: Install dependencies
@@ -432,6 +439,7 @@ jobs:
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
           BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
+          BRAND_FIXED_INVITE_CODE: ${{ github.event.inputs.brand_fixed_invite_code }}
         run: dart scripts/apply_brand.dart
 
       - name: Install dependencies
@@ -676,6 +684,7 @@ jobs:
           BRAND_DISPLAY_NAME: ${{ github.event.inputs.brand_display_name }}
           BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_OSS_URLS: ${{ github.event.inputs.brand_oss_urls }}
+          BRAND_FIXED_INVITE_CODE: ${{ github.event.inputs.brand_fixed_invite_code }}
         run: dart scripts/apply_brand.dart
 
       - name: Setup Android signing
