@@ -174,7 +174,7 @@ jobs:
           # 创建 DMG 配置文件
           cat > dmg_config.json <<EOF
           {
-            "title": "$DISPLAY_NAME",
+            "title": "Install $DISPLAY_NAME",
             "icon": "../../../../macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
             "background": "../../../../macos/packaging/dmg/background.png",
             "window": {
@@ -192,11 +192,7 @@ jobs:
 
           # 生成 DMG
           FILE_NAME="${APP_NAME}-macos-arm64.dmg"
-          appdmg dmg_config.json "$FILE_NAME" || {
-            echo "appdmg failed, fallback to ZIP"
-            FILE_NAME="${APP_NAME}-macos.zip"
-            zip -r "$FILE_NAME" "$DISPLAY_NAME.app"
-          }
+          appdmg dmg_config.json "$FILE_NAME"
 
           FILE_SIZE=$(stat -f%z "$FILE_NAME")
           echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
@@ -336,7 +332,7 @@ jobs:
           # 创建 DMG 配置文件
           cat > dmg_config.json <<EOF
           {
-            "title": "$DISPLAY_NAME",
+            "title": "Install $DISPLAY_NAME",
             "icon": "../../../../macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
             "background": "../../../../macos/packaging/dmg/background.png",
             "window": {
@@ -354,11 +350,7 @@ jobs:
 
           # 生成 DMG
           FILE_NAME="${APP_NAME}-macos-intel.dmg"
-          appdmg dmg_config.json "$FILE_NAME" || {
-            echo "appdmg failed, fallback to ZIP"
-            FILE_NAME="${APP_NAME}-macos-intel.zip"
-            zip -r "$FILE_NAME" "$DISPLAY_NAME.app"
-          }
+          appdmg dmg_config.json "$FILE_NAME"
 
           FILE_SIZE=$(stat -f%z "$FILE_NAME")
           echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
