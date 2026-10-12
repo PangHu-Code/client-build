@@ -169,7 +169,12 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           APP_NAME="${{ steps.brand.outputs.app_name }}"
-          DISPLAY_NAME="${{ steps.brand.outputs.display_name }}"
+          APP_BUNDLE="$(find . -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "No macOS app bundle found"
+            exit 1
+          fi
+          DISPLAY_NAME="$(basename "$APP_BUNDLE" .app)"
 
           # 创建 DMG 配置文件
           cat > dmg_config.json <<EOF
@@ -327,7 +332,12 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           APP_NAME="${{ steps.brand.outputs.app_name }}"
-          DISPLAY_NAME="${{ steps.brand.outputs.display_name }}"
+          APP_BUNDLE="$(find . -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "No macOS app bundle found"
+            exit 1
+          fi
+          DISPLAY_NAME="$(basename "$APP_BUNDLE" .app)"
 
           # 创建 DMG 配置文件
           cat > dmg_config.json <<EOF
