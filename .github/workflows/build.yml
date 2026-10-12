@@ -180,8 +180,8 @@ jobs:
           cat > dmg_config.json <<EOF
           {
             "title": "Install $DISPLAY_NAME",
-            "icon": "../../../../macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
-            "background": "../../../../macos/packaging/dmg/background.png",
+            "icon": "$GITHUB_WORKSPACE/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
+            "background": "$GITHUB_WORKSPACE/macos/packaging/dmg/background.png",
             "window": {
               "size": {
                 "width": 660,
@@ -343,8 +343,8 @@ jobs:
           cat > dmg_config.json <<EOF
           {
             "title": "Install $DISPLAY_NAME",
-            "icon": "../../../../macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
-            "background": "../../../../macos/packaging/dmg/background.png",
+            "icon": "$GITHUB_WORKSPACE/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png",
+            "background": "$GITHUB_WORKSPACE/macos/packaging/dmg/background.png",
             "window": {
               "size": {
                 "width": 660,
