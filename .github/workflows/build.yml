@@ -176,6 +176,9 @@ jobs:
           fi
           DISPLAY_NAME="$(basename "$APP_BUNDLE" .app)"
 
+          # 对 .app 进行深度 Ad-hoc 签名，确保注入的 Core 与主程序签名一致，防止 M 芯片提示“已损坏”
+          codesign --force --deep --sign - "$DISPLAY_NAME.app"
+
           # 创建 DMG 配置文件
           cat > dmg_config.json <<EOF
           {
@@ -339,6 +342,9 @@ jobs:
           fi
           DISPLAY_NAME="$(basename "$APP_BUNDLE" .app)"
 
+          # 对 .app 进行深度 Ad-hoc 签名，确保注入的 Core 与主程序签名一致
+          codesign --force --deep --sign - "$DISPLAY_NAME.app"
+
           # 创建 DMG 配置文件
           cat > dmg_config.json <<EOF
           {
@@ -493,43 +499,9 @@ jobs:
         id: build
         shell: pwsh
         run: |
-          $displayName = "${{ steps.brand.outputs.display_name }}"
           $appName = "${{ steps.brand.outputs.app_name }}"
           $releaseDir = "build\windows\x64\runner\Release"
-          $releaseDirPath = (Resolve-Path $releaseDir).Path
           $FILE_NAME = "$appName-windows.zip"
-
-          # 当显示名与包名不同时，创建 .bat 启动脚本（纯文本，支持中文文件名）
-          if ($displayName -ne $appName) {
-            $batContent = "@echo off`r`nstart """" ""%~dp0$appName.exe"""
-            $batPath = Join-Path $releaseDirPath "$displayName.bat"
-            [System.IO.File]::WriteAllText($batPath, $batContent, [System.Text.Encoding]::GetEncoding(936))
-            if (!(Test-Path $batPath)) {
-              throw "Failed to create launcher bat: $batPath"
-            }
-
-            # 为 bat 启动器生成同名中文快捷方式，便于用户双击使用
-            $shell = New-Object -ComObject WScript.Shell
-            $shortcutTempPath = Join-Path $releaseDirPath "__launcher__.lnk"
-            $shortcutPath = Join-Path $releaseDirPath "$displayName.lnk"
-            if (Test-Path $shortcutTempPath) {
-              Remove-Item -Path $shortcutTempPath -Force
-            }
-            if (Test-Path $shortcutPath) {
-              Remove-Item -Path $shortcutPath -Force
-            }
-            $shortcut = $shell.CreateShortcut($shortcutTempPath)
-            $exePath = Join-Path $releaseDirPath "$appName.exe"
-            if (!(Test-Path $exePath)) {
-              throw "Launcher target exe not found: $exePath"
-            }
-            # 这里使用 ASCII 的 exe 作为 TargetPath，避免 COM 在中文 bat 路径上报错
-            $shortcut.TargetPath = $exePath
-            $shortcut.WorkingDirectory = $releaseDirPath
-            $shortcut.Description = "$displayName Launcher"
-            $shortcut.Save()
-            Move-Item -Path $shortcutTempPath -Destination $shortcutPath -Force
-          }
 
           Compress-Archive -Path "$releaseDir\*" -DestinationPath $FILE_NAME
           $FILE_SIZE = (Get-Item $FILE_NAME).Length
@@ -690,7 +662,166 @@ jobs:
         run: dart scripts/apply_brand.dart
 
       - name: Setup Android signing
+        env:
+          BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
+          BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
+          SIGNING_SALT: ${{ secrets.WEBHOOK_SECRET || 'panghu-default-signing-salt' }}
         run: |
+          python3 - <<'PYEOF'
+          import os, hmac, hashlib, base64, subprocess, tempfile
+
+          pkg_id = os.environ["BRAND_PACKAGE_ID"].strip()
+          app_name = os.environ["BRAND_APP_NAME"].strip()
+          salt = os.environ["SIGNING_SALT"].encode("utf-8")
+
+          # 基于 HMAC-SHA256 构造确定性字节流生成器 (DRBG)，零第三方依赖
+          seed = hmac.new(salt, f"android-keystore-v1:{pkg_id}".encode("utf-8"), hashlib.sha256).digest()
+
+          def drbg_bytes(n, label):
+              out = bytearray()
+              counter = 0
+              while len(out) < n:
+                  out.extend(hmac.new(seed, label + counter.to_bytes(4, "big"), hashlib.sha256).digest())
+                  counter += 1
+              return bytes(out[:n])
+
+          def is_probable_prime(n):
+              if n < 2 or n % 2 == 0:
+                  return n == 2
+              d, r = n - 1, 0
+              while d % 2 == 0:
+                  d //= 2
+                  r += 1
+              for a in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
+                  x = pow(a, d, n)
+                  if x == 1 or x == n - 1:
+                      continue
+                  for _ in range(r - 1):
+                      x = (x * x) % n
+                      if x == n - 1:
+                          break
+                  else:
+                      return False
+              return True
+
+          def gen_prime(bits, label):
+              idx = 0
+              while True:
+                  raw = int.from_bytes(drbg_bytes(bits // 8, label + idx.to_bytes(4, "big")), "big")
+                  candidate = raw | (1 << (bits - 1)) | (1 << (bits - 2)) | 1
+                  if candidate % 65537 != 1 and is_probable_prime(candidate):
+                      return candidate
+                  idx += 1
+
+          p = gen_prime(1024, b"prime-p:")
+          q = gen_prime(1024, b"prime-q:")
+          if p < q:
+              p, q = q, p
+          e = 65537
+          n = p * q
+          phi = (p - 1) * (q - 1)
+          d = pow(e, -1, phi)
+          dmp1 = d % (p - 1)
+          dmq1 = d % (q - 1)
+          iqmp = pow(q, -1, p)
+
+          def der_len(length):
+              if length < 0x80:
+                  return bytes([length])
+              b = length.to_bytes((length.bit_length() + 7) // 8, "big")
+              return bytes([0x80 | len(b)]) + b
+
+          def der_tlv(tag, content):
+              return bytes([tag]) + der_len(len(content)) + content
+
+          def der_int(val):
+              length = max(1, (val.bit_length() + 8) // 8)
+              return der_tlv(0x02, val.to_bytes(length, "big", signed=False))
+
+          def der_seq(*items):
+              return der_tlv(0x30, b"".join(items))
+
+          def der_set(*items):
+              return der_tlv(0x31, b"".join(items))
+
+          def der_oid(oid_bytes):
+              return der_tlv(0x06, oid_bytes)
+
+          def der_utf8(s):
+              return der_tlv(0x0C, s.encode("utf-8"))
+
+          def der_printable(s):
+              return der_tlv(0x13, s.encode("ascii"))
+
+          def der_utctime(s):
+              return der_tlv(0x17, s.encode("ascii"))
+
+          def der_bitstring(b):
+              return der_tlv(0x03, b"\x00" + b)
+
+          rsa_priv_der = der_seq(
+              der_int(0), der_int(n), der_int(e), der_int(d),
+              der_int(p), der_int(q), der_int(dmp1), der_int(dmq1), der_int(iqmp)
+          )
+
+          oid_rsa_encryption = der_seq(der_oid(b"\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01"), b"\x05\x00")
+          oid_sha256_with_rsa = der_seq(der_oid(b"\x2a\x86\x48\x86\xf7\x0d\x01\x01\x0b"), b"\x05\x00")
+
+          def rdn_attr(oid_b, val_der):
+              return der_set(der_seq(der_oid(oid_b), val_der))
+
+          name_der = der_seq(
+              rdn_attr(b"\x55\x04\x06", der_printable("SG")),
+              rdn_attr(b"\x55\x04\x0a", der_utf8(pkg_id)),
+              rdn_attr(b"\x55\x04\x0b", der_utf8("Mobile")),
+              rdn_attr(b"\x55\x04\x03", der_utf8(app_name)),
+          )
+
+          serial = (int.from_bytes(drbg_bytes(8, b"serial:"), "big") & 0x7FFFFFFFFFFFFFFF) or 1
+          validity_der = der_seq(der_utctime("240101000000Z"), der_utctime("491231235959Z"))
+          spki_der = der_seq(oid_rsa_encryption, der_bitstring(der_seq(der_int(n), der_int(e))))
+
+          tbs_der = der_seq(
+              der_tlv(0xA0, der_int(2)),
+              der_int(serial),
+              oid_sha256_with_rsa,
+              name_der,
+              validity_der,
+              name_der,
+              spki_der,
+          )
+
+          digest_info = bytes.fromhex("3031300d060960864801650304020105000420") + hashlib.sha256(tbs_der).digest()
+          pad_len = 256 - 3 - len(digest_info)
+          em = b"\x00\x01" + (b"\xff" * pad_len) + b"\x00" + digest_info
+          sig_int = pow(int.from_bytes(em, "big"), d, n)
+          sig_bytes = sig_int.to_bytes(256, "big")
+
+          cert_der = der_seq(tbs_der, oid_sha256_with_rsa, der_bitstring(sig_bytes))
+
+          def to_pem(label, der_bytes):
+              b64 = base64.encodebytes(der_bytes).decode("ascii")
+              return f"-----BEGIN {label}-----\n{b64}-----END {label}-----\n"
+
+          with tempfile.TemporaryDirectory() as tmp:
+              key_file = os.path.join(tmp, "key.pem")
+              cert_file = os.path.join(tmp, "cert.pem")
+              with open(key_file, "w") as f:
+                  f.write(to_pem("RSA PRIVATE KEY", rsa_priv_der))
+              with open(cert_file, "w") as f:
+                  f.write(to_pem("CERTIFICATE", cert_der))
+              subprocess.run([
+                  "openssl", "pkcs12", "-export",
+                  "-in", cert_file, "-inkey", key_file,
+                  "-name", "release",
+                  "-out", "android/app/keystore.jks",
+                  "-passout", "pass:panghu123456"
+              ], check=True)
+
+          cert_sha256 = hashlib.sha256(cert_der).hexdigest()
+          print(f"Generated deterministic keystore for {pkg_id}, Cert SHA256: {cert_sha256}")
+          PYEOF
+
           echo "storePassword=panghu123456" >> android/local.properties
           echo "keyAlias=release" >> android/local.properties
           echo "keyPassword=panghu123456" >> android/local.properties
