@@ -49,7 +49,7 @@ on:
 jobs:
   build-macos:
     if: ${{ github.event.inputs.platform == 'all' || contains(format(',{0},', github.event.inputs.platform), ',macos,') }}
-    runs-on: macos-14
+    runs-on: macos-15
     outputs:
       file_name: ${{ steps.build.outputs.file_name }}
       file_size: ${{ steps.build.outputs.file_size }}
@@ -214,7 +214,7 @@ jobs:
 
   build-macos-intel:
     if: ${{ github.event.inputs.platform == 'all' || contains(format(',{0},', github.event.inputs.platform), ',macos,') }}
-    runs-on: macos-14
+    runs-on: macos-15-intel
     outputs:
       file_name: ${{ steps.build.outputs.file_name }}
       file_size: ${{ steps.build.outputs.file_size }}
@@ -284,7 +284,7 @@ jobs:
           done
           cargo fetch --locked
 
-      - name: Setup Flutter (x86_64 via Rosetta)
+      - name: Setup Flutter (macOS x86_64)
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.0'
