@@ -967,7 +967,9 @@ jobs:
               exit 1
             fi
           done
-          if ! grep -Fxq "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT_SHA256" "$VERIFY_LOG" \
+          # 兼容旧版 Signer #1 和新版 V3.0 Signer: 等标签；所有签名证书必须属于当前品牌。
+          ACTUAL_CERT_SHA256="$(sed -nE 's/^(Signer #[0-9]+|V[0-9]+(\.[0-9]+)* Signer):? certificate SHA-256 digest: ([a-fA-F0-9]{64})$/\3/p' "$VERIFY_LOG" | tr '[:upper:]' '[:lower:]' | sort -u)"
+          if [ "$ACTUAL_CERT_SHA256" != "$EXPECTED_CERT_SHA256" ] \
             || ! grep -Fxq "Number of signers: 1" "$VERIFY_LOG"; then
             echo "::error::APK signing certificate does not match this brand's keystore"
             exit 1

@@ -93,6 +93,101 @@ fi
                 self.assertEqual(retry["run"], expected)
 
 
+class AndroidSigningOutputTests(unittest.TestCase):
+    fingerprint = hashlib.sha256(b"panghu signing certificate").hexdigest()
+
+    def verify_output(self, certificates, *, signers=1, verify_exit=0):
+        """Exercise the workflow against old/new apksigner output formats."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            apk = root / "build/app/outputs/flutter-apk/app-release.apk"
+            apk.parent.mkdir(parents=True)
+            apk.write_bytes(b"original APK")
+            log = root / "verify-output"
+            log.write_text("\n".join([
+                "Verifies",
+                "Verified using v1 scheme (JAR signing): true",
+                "Verified using v2 scheme (APK Signature Scheme v2): true",
+                "Verified using v3 scheme (APK Signature Scheme v3): true",
+                "Verified using v3.1 scheme (APK Signature Scheme v3.1): false",
+                "Verified using v3.2 scheme (APK Signature Scheme v3.2): false",
+                f"Number of signers: {signers}",
+                *certificates,
+                "WARNING: META-INF/panghu.version not protected by signature.",
+                "",
+            ]))
+            signer = root / "sdk/build-tools/36.0.0/apksigner"
+            signer.parent.mkdir(parents=True)
+            signer.write_text('''#!/bin/bash
+case "$1" in
+  sign)
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --out ]; then
+        printf 'signed APK' > "$2"
+        exit 0
+      fi
+      shift
+    done
+    exit 1
+    ;;
+  verify)
+    cat "$VERIFY_OUTPUT"
+    exit "$VERIFY_EXIT"
+    ;;
+  *) exit 1 ;;
+esac
+''')
+            signer.chmod(0o755)
+            env = dict(os.environ, ANDROID_SDK_ROOT=str(root / "sdk"),
+                       RUNNER_TEMP=str(root), SIGNING_PASSWORD="panghu-test-password",
+                       EXPECTED_CERT_SHA256=self.fingerprint,
+                       VERIFY_OUTPUT=str(log), VERIFY_EXIT=str(verify_exit))
+            result = run_shell(step("build-android", "Sign and verify APK")["run"], root, env)
+            return result, apk.read_bytes()
+
+    def test_accepts_legacy_and_versioned_signer_labels(self):
+        for label in ("Signer #1", "V3.0 Signer:", "V3.1 Signer:", "V3.2 Signer:"):
+            with self.subTest(label=label):
+                result, apk = self.verify_output([
+                    f"{label} certificate SHA-256 digest: {self.fingerprint}",
+                ])
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(apk, b"signed APK")
+
+    def test_accepts_same_certificate_reported_for_multiple_schemes(self):
+        result, apk = self.verify_output([
+            f"{label} certificate SHA-256 digest: {self.fingerprint}"
+            for label in ("V3.0 Signer:", "V3.1 Signer:")
+        ])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(apk, b"signed APK")
+
+    def test_rejects_missing_mismatched_or_mixed_certificates(self):
+        valid = f"V3.0 Signer: certificate SHA-256 digest: {self.fingerprint}"
+        wrong = f"V3.1 Signer: certificate SHA-256 digest: {'0' * 64}"
+        for certificates in ([], [wrong], [valid, wrong]):
+            with self.subTest(certificates=certificates):
+                result, apk = self.verify_output(certificates)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("does not match", result.stdout)
+                self.assertEqual(apk, b"original APK")
+
+    def test_rejects_multiple_signers_even_with_the_expected_fingerprint(self):
+        result, apk = self.verify_output([
+            f"Signer #1 certificate SHA-256 digest: {self.fingerprint}",
+            f"Signer #2 certificate SHA-256 digest: {self.fingerprint}",
+        ], signers=2)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(apk, b"original APK")
+
+    def test_verifier_failure_prevents_replacement(self):
+        result, apk = self.verify_output([
+            f"Signer #1 certificate SHA-256 digest: {self.fingerprint}",
+        ], verify_exit=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(apk, b"original APK")
+
+
 class AndroidSigningTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
