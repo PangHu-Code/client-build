@@ -81,7 +81,29 @@ jobs:
           cache-dependency-path: core/go.sum
 
       - name: Setup Rust
+        id: setup_rust
+        continue-on-error: true
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Retry Rust setup after network failure
+        if: steps.setup_rust.outcome == 'failure'
+        shell: bash
+        run: |
+          # rustup 的下载重试不覆盖所有 DNS/连接错误，重试完整安装命令。
+          for attempt in 1 2 3; do
+            echo "Retrying Rust setup in $((attempt * 10)) seconds (${attempt}/3)..."
+            sleep $((attempt * 10))
+            if rustup toolchain install stable --profile minimal --no-self-update; then
+              rustup default stable
+              echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" >> "$GITHUB_ENV"
+              echo "CARGO_TERM_COLOR=${CARGO_TERM_COLOR:-always}" >> "$GITHUB_ENV"
+              rustc +stable --version
+              cargo +stable --version
+              exit 0
+            fi
+          done
+          echo "::error::Rust toolchain installation failed after all retries"
+          exit 1
 
       - name: Configure Cargo
         shell: bash
@@ -246,7 +268,29 @@ jobs:
           cache-dependency-path: core/go.sum
 
       - name: Setup Rust
+        id: setup_rust
+        continue-on-error: true
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Retry Rust setup after network failure
+        if: steps.setup_rust.outcome == 'failure'
+        shell: bash
+        run: |
+          # rustup 的下载重试不覆盖所有 DNS/连接错误，重试完整安装命令。
+          for attempt in 1 2 3; do
+            echo "Retrying Rust setup in $((attempt * 10)) seconds (${attempt}/3)..."
+            sleep $((attempt * 10))
+            if rustup toolchain install stable --profile minimal --no-self-update; then
+              rustup default stable
+              echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" >> "$GITHUB_ENV"
+              echo "CARGO_TERM_COLOR=${CARGO_TERM_COLOR:-always}" >> "$GITHUB_ENV"
+              rustc +stable --version
+              cargo +stable --version
+              exit 0
+            fi
+          done
+          echo "::error::Rust toolchain installation failed after all retries"
+          exit 1
 
       - name: Configure Cargo
         shell: bash
@@ -414,7 +458,29 @@ jobs:
           cache-dependency-path: core/go.sum
 
       - name: Setup Rust
+        id: setup_rust
+        continue-on-error: true
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Retry Rust setup after network failure
+        if: steps.setup_rust.outcome == 'failure'
+        shell: bash
+        run: |
+          # rustup 的下载重试不覆盖所有 DNS/连接错误，重试完整安装命令。
+          for attempt in 1 2 3; do
+            echo "Retrying Rust setup in $((attempt * 10)) seconds (${attempt}/3)..."
+            sleep $((attempt * 10))
+            if rustup toolchain install stable --profile minimal --no-self-update; then
+              rustup default stable
+              echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" >> "$GITHUB_ENV"
+              echo "CARGO_TERM_COLOR=${CARGO_TERM_COLOR:-always}" >> "$GITHUB_ENV"
+              rustc +stable --version
+              cargo +stable --version
+              exit 0
+            fi
+          done
+          echo "::error::Rust toolchain installation failed after all retries"
+          exit 1
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -603,7 +669,29 @@ jobs:
           link-to-sdk: true
 
       - name: Setup Rust
+        id: setup_rust
+        continue-on-error: true
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Retry Rust setup after network failure
+        if: steps.setup_rust.outcome == 'failure'
+        shell: bash
+        run: |
+          # rustup 的下载重试不覆盖所有 DNS/连接错误，重试完整安装命令。
+          for attempt in 1 2 3; do
+            echo "Retrying Rust setup in $((attempt * 10)) seconds (${attempt}/3)..."
+            sleep $((attempt * 10))
+            if rustup toolchain install stable --profile minimal --no-self-update; then
+              rustup default stable
+              echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" >> "$GITHUB_ENV"
+              echo "CARGO_TERM_COLOR=${CARGO_TERM_COLOR:-always}" >> "$GITHUB_ENV"
+              rustc +stable --version
+              cargo +stable --version
+              exit 0
+            fi
+          done
+          echo "::error::Rust toolchain installation failed after all retries"
+          exit 1
 
       - name: Setup Flutter (Android)
         uses: subosito/flutter-action@v2
@@ -662,6 +750,7 @@ jobs:
         run: dart scripts/apply_brand.dart
 
       - name: Setup Android signing
+        id: android_signing
         env:
           BRAND_PACKAGE_ID: ${{ github.event.inputs.brand_package_id }}
           BRAND_APP_NAME: ${{ github.event.inputs.brand_app_name }}
@@ -820,6 +909,8 @@ jobs:
 
           cert_sha256 = hashlib.sha256(cert_der).hexdigest()
           print(f"Generated deterministic keystore for {pkg_id}, Cert SHA256: {cert_sha256}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"cert_sha256={cert_sha256}\n")
           PYEOF
 
           echo "storePassword=panghu123456" >> android/local.properties
@@ -836,6 +927,52 @@ jobs:
         run: |
           ls -la libclash/android/arm64-v8a/
           flutter build apk --release --dart-define=APP_ENV=stable
+
+      - name: Sign and verify APK
+        shell: bash
+        env:
+          SIGNING_PASSWORD: panghu123456
+          EXPECTED_CERT_SHA256: ${{ steps.android_signing.outputs.cert_sha256 }}
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ] || [ ! -x "$APKSIGNER" ]; then
+            echo "::error::Android SDK apksigner not found"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_CERT_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "::error::Expected Android signing certificate fingerprint is missing or invalid"
+            exit 1
+          fi
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          SIGNED_APK="$RUNNER_TEMP/app-release-signed.apk"
+          # 使用本次生成的同一品牌证书补齐签名，兼容旧 client_ref 的 Gradle 配置。
+          "$APKSIGNER" sign \
+            --ks android/app/keystore.jks --ks-type PKCS12 \
+            --ks-key-alias release \
+            --ks-pass env:SIGNING_PASSWORD --key-pass env:SIGNING_PASSWORD \
+            --v1-signing-enabled true --v2-signing-enabled true \
+            --v3-signing-enabled true --v4-signing-enabled false \
+            --out "$SIGNED_APK" "$APK"
+
+          VERIFY_LOG="$(mktemp)"
+          trap 'rm -f "$VERIFY_LOG"' EXIT
+          # minSdk >= 24 时默认验签会跳过 V1；这里只调整校验范围，不修改 APK 的最低系统版本。
+          "$APKSIGNER" verify --verbose --print-certs --min-sdk-version 23 "$SIGNED_APK" | tee "$VERIFY_LOG"
+          for scheme in v1 v2 v3; do
+            if ! grep -Eq "^Verified using ${scheme} scheme .*: true$" "$VERIFY_LOG"; then
+              echo "::error::APK is missing a valid ${scheme} signature"
+              exit 1
+            fi
+          done
+          if ! grep -Fxq "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT_SHA256" "$VERIFY_LOG" \
+            || ! grep -Fxq "Number of signers: 1" "$VERIFY_LOG"; then
+            echo "::error::APK signing certificate does not match this brand's keystore"
+            exit 1
+          fi
+          mv "$SIGNED_APK" "$APK"
 
       - name: Rename APK and get info
         id: build
